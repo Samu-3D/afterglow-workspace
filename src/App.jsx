@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import api, { getToken, clearToken } from "./api";
 const LOGO_SRC = "/Logo_AFTERGLOW1-05.png";
 const C = {
   bg: "#1a1a1a", surface: "#232323", elevated: "#2c2c2c", border: "#3a3a3a",
@@ -22,9 +21,117 @@ const PRIORITIES = ["Urgent", "High", "Normal", "Low"];
 const priorityColor = (p) => p === "Urgent" ? C.red : p === "High" ? C.orange : p === "Normal" ? C.blue : C.muted;
 const statusColor = (s) => s === "Done" ? C.green : s === "In Progress" ? C.orange : s === "Blocked" ? C.red : C.muted;
 
+const COMMAND_CENTER_SECTIONS = [
+  { key:"coach", label:"Mental Coach", group:"Focus" },
+  { key:"stats", label:"Dashboard Stats", group:"Focus" },
+  { key:"miniCalendar", label:"Calendar / Month View", group:"Focus" },
+  { key:"taskCategories", label:"Task Categories", group:"Tasks" },
+  { key:"todayFocus", label:"Today Focus", group:"Tasks" },
+  { key:"lateTasks", label:"Late Tasks", group:"Tasks" },
+  { key:"dailyRoutine", label:"Daily Routine", group:"Routine" },
+  { key:"endDayReview", label:"End Day Review", group:"Routine" },
+  { key:"tomorrowPrep", label:"Tomorrow Prep", group:"Routine" },
+  { key:"lifeOS", label:"Life OS", group:"Growth" },
+  { key:"goalProgress", label:"Goal Progress", group:"Growth" },
+  { key:"mopasAlerts", label:"MOPAS Alerts", group:"MOPAS" },
+  { key:"documentAlerts", label:"Document Alerts", group:"MOPAS" },
+  { key:"weeklyProgress", label:"Weekly Progress", group:"Review" },
+  { key:"spaceHealth", label:"Space Health", group:"Review" },
+];
+const DEFAULT_COMMAND_CENTER_VISIBILITY = COMMAND_CENTER_SECTIONS.reduce((acc, item) => ({ ...acc, [item.key]:true }), {});
+const DEFAULT_COMMAND_CENTER_ORDER = COMMAND_CENTER_SECTIONS.map(item => item.key);
+
 const STORE_KEY = "afterglow_tasks_v3";
 const load = () => { try { const d = window.localStorage.getItem(STORE_KEY); return d ? JSON.parse(d) : []; } catch { return []; } };
 const save = (t) => { try { window.localStorage.setItem(STORE_KEY, JSON.stringify(t)); } catch {} };
+
+
+const API_BASE_URL = ((typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL) || "http://localhost:5000").replace(/\/$/, "");
+const AUTH_TOKEN_KEY = "afterglow_auth_token_v1";
+const AUTH_USER_KEY = "afterglow_auth_user_v1";
+const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
+const getStoredAuthToken = () => {
+  try { return window.localStorage.getItem(AUTH_TOKEN_KEY) || ""; } catch { return ""; }
+};
+const setStoredAuth = (token, user) => {
+  try {
+    if (token) window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+    else window.localStorage.removeItem(AUTH_TOKEN_KEY);
+    if (user) window.localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+    else window.localStorage.removeItem(AUTH_USER_KEY);
+  } catch {}
+};
+const getStoredAuthUser = () => readStore(AUTH_USER_KEY, null);
+const getTaskCloudId = (task = {}) => task.cloudId || task._id || (isMongoId(task.id) ? task.id : "");
+const normalizeChecklistForApi = (items = []) => (Array.isArray(items) ? items : []).map(item => {
+  if (item && typeof item === "object") return { text:String(item.text || ""), done:item.done === true };
+  return { text:String(item || ""), done:false };
+}).filter(item => item.text.trim());
+const normalizeCommentsForApi = (items = []) => (Array.isArray(items) ? items : []).map(item => {
+  if (item && typeof item === "object") return { text:String(item.text || ""), time:item.time || new Date().toISOString() };
+  return { text:String(item || ""), time:new Date().toISOString() };
+}).filter(item => item.text.trim());
+const taskPayloadForApi = (task = {}) => ({
+  clientId: task.clientId || (!isMongoId(task.id) ? task.id : ""),
+  title: task.title || "Untitled task",
+  space: task.space || "wakeup",
+  folder: task.folder || "",
+  list: task.list || "",
+  status: STATUSES.includes(task.status) ? task.status : "To Do",
+  priority: PRIORITIES.includes(task.priority) ? task.priority : "Normal",
+  due: task.due || "",
+  time: task.time || "",
+  goal: task.goal || "",
+  details: task.details || "",
+  checklist: normalizeChecklistForApi(task.checklist),
+  comments: normalizeCommentsForApi(task.comments),
+  locked: task.locked === true,
+  completedAt: task.completedAt || undefined,
+  isRoutine: task.isRoutine === true,
+  routineKey: task.routineKey || "",
+  routineDate: task.routineDate || "",
+  repeat: task.repeat || "none",
+  repeatDay: task.repeatDay || "",
+  mopasTaskType: task.mopasTaskType || "",
+  tenderStage: task.tenderStage || "",
+  requestedDocuments: task.requestedDocuments || "",
+  missingDocuments: task.missingDocuments || "",
+  moneyCategory: task.moneyCategory || "",
+  amount: Number(task.amount || 0),
+});
+const taskFromApi = (item = {}) => normalizeTask({
+  ...item,
+  id: item.clientId || item._id || item.id || `CLOUD-${Date.now()}`,
+  cloudId: item._id || item.id || item.cloudId || "",
+  clientId: item.clientId || "",
+  completedAt: item.completedAt ? String(item.completedAt) : "",
+  checklist: normalizeChecklistForApi(item.checklist),
+  comments: normalizeCommentsForApi(item.comments),
+});
+async function afterglowApiRequest(path, options = {}) {
+  const token = getStoredAuthToken();
+  const headers = { "Content-Type":"application/json", ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.success === false) throw new Error(data.message || `API request failed (${response.status})`);
+  return data;
+}
+const mergeCloudTasks = (localTasks = [], cloudTasks = []) => {
+  const byKey = new Map();
+  const put = (task) => {
+    const normalized = normalizeTask(task);
+    const key = getTaskCloudId(normalized) || normalized.clientId || normalized.id;
+    if (key) byKey.set(String(key), normalized);
+  };
+  (Array.isArray(localTasks) ? localTasks : []).forEach(put);
+  (Array.isArray(cloudTasks) ? cloudTasks : []).forEach(task => {
+    const normalized = normalizeTask(task);
+    [getTaskCloudId(normalized), normalized.clientId, normalized.id].filter(Boolean).forEach(key => byKey.delete(String(key)));
+    put(normalized);
+  });
+  return sortTasksSmart([...byKey.values()]);
+};
 
 const Goals_TEXT_KEY = "afterglow_Goals_text_v1";
 const DOCUMENTS_KEY = "afterglow_documents_v1";
@@ -41,28 +148,70 @@ const NORMAL_MOPAS_FOLDER = "Normal MOPAS Tasks";
 const TENDER_SEARCH_FOLDER = "Tender Search Log";
 const APP_SETTINGS_KEY = "afterglow_app_settings_v1";
 const DEFAULT_DRIVE_FOLDER_ID = "1JPQ7q21cti5nCdFOWzpZLtyYkQR-p8F4";
+const MONEY_ENTRIES_KEY = "afterglow_money_entries_v1";
+const PURCHASE_GOALS_KEY = "afterglow_purchase_goals_v1";
+const FUTURE_GOALS_KEY = "afterglow_future_goals_v1";
+const ITSINDA_WEEKLY_AMOUNT = 20000;
+const TASK_CATEGORY_COLLAPSE_KEY = "afterglow_task_category_collapse_v1";
 const DEFAULT_APP_SETTINGS = {
   general:{ userName:"ISHIMWE Samuel", roleTitle:"Operations Manager / 3D Animator", companyName:"MOPAS Ltd", workspaceName:"AFTERGLOW / MOPAS Workspace", defaultSpace:"wakeup", timezone:"Africa/Kigali", logoSize:"medium" },
   routine:{ wakeupTime:"06:00", readingTarget:"20 pages", workoutTime:"06:50", eveningWorkoutTime:"18:30", drawingboxTime:"20:00", personalProjectTime:"21:00", afterglowBrandTime:"22:00", endDayReviewTime:"22:45", sleepTarget:"23:00", autoRoutineTasks:true },
-  tasks:{ defaultPriority:"Normal", autoMoveUnfinished:"ask first", completedVisibility:"hide", overdueBehavior:"move late down", weekStartDay:"Sunday", defaultReminderDays:1, showCompletedInFocus:false, doneDefaultMigrated:true },
+  tasks:{ defaultPriority:"Normal", autoMoveUnfinished:"ask first", completedVisibility:"show", overdueBehavior:"move late down", weekStartDay:"Sunday", defaultReminderDays:1, showCompletedInFocus:false, doneDefaultMigrated:true },
+  commandCenter:{
+    visibleCount:8,
+    sectionOrder:DEFAULT_COMMAND_CENTER_ORDER,
+    sections:DEFAULT_COMMAND_CENTER_VISIBILITY,
+    layout:"balanced",
+    density:"comfortable",
+    showSectionNumbers:true,
+    showStatusBar:true,
+    defaultExpanded:false,
+    professionalCalendarPinned:false,
+  },
   mopas:{ tenderRootPath:TENDER_ROOT, defaultTenderStages:TENDER_STAGES.join(", "), defaultRequiredDocuments:"RDB certificate, RRA tax clearance, RSSB clearance, VAT certificate, beneficial ownership declaration, bid security / declaration of commitment", tenderDeadlineWarningDays:7, highValueTenderThreshold:10000000, tenderUrgencyOnDashboard:true },
   documents:{ categories:"Company, Tender, Staff, Contract, Finance", expiryWarningDays:30, showExpiredOnDashboard:true, autoHighlightExpired:true, defaultOwner:"MOPAS", googleDriveFolderId:DEFAULT_DRIVE_FOLDER_ID, googleAppsScriptUploadUrl:"" },
   backup:{ autoBackupReminder:"weekly" },
   appearance:{ theme:"dark", accentColor:"orange", compactMode:false, cardDensity:"comfortable", sidebarBehavior:"auto", logoSize:"medium", fontSize:"normal", borderRadius:"rounded", panelSpacing:"normal", dashboardIcon:"▨", dashboardLabel:"Command Center", workspaceCard:true, showTaskCounts:true },
   notifications:{ browserNotifications:false, emailNotifications:true, todayDisciplineEmail:true, todayDisciplineEmailTime:"05:45", emailMode:"Current action only", emailTone:"Direct", actionWindowMinutes:60, maxEmailTasks:1, includeTaskStartTimes:true, includeWhyInEmail:true, includeNextBlock:true, includeLateWarningInCurrentEmail:true, includeDocumentAlertInCurrentEmail:false, includeRoutineProgressInCurrentEmail:true, dailyMorningPlanEmail:true, overdueEmail:true, documentExpiryEmail:true, endDayReviewEmail:true, dailyRoutineReminder:true, deadlineReminder:true, tenderDeadlineReminder:true, whatsappNumber:"+250784623361", emailAddress:"ishimwesamuel3d@gmail.com", method:"Email", googleAppsScriptEmailUrl:"" },
 };
-const mergeAppSettings = (value = {}) => ({
-  ...DEFAULT_APP_SETTINGS,
-  ...value,
-  general:{ ...DEFAULT_APP_SETTINGS.general, ...(value.general || {}) },
-  routine:{ ...DEFAULT_APP_SETTINGS.routine, ...(value.routine || {}) },
-  tasks:{ ...DEFAULT_APP_SETTINGS.tasks, ...(value.tasks || {}) },
-  mopas:{ ...DEFAULT_APP_SETTINGS.mopas, ...(value.mopas || {}) },
-  documents:{ ...DEFAULT_APP_SETTINGS.documents, ...(value.documents || {}) },
-  backup:{ ...DEFAULT_APP_SETTINGS.backup, ...(value.backup || {}) },
-  appearance:{ ...DEFAULT_APP_SETTINGS.appearance, ...(value.appearance || {}) },
-  notifications:{ ...DEFAULT_APP_SETTINGS.notifications, ...(value.notifications || {}) },
-});
+const mergeAppSettings = (value = {}) => {
+  const rawCommandCenter = value.commandCenter || {};
+  const validKeys = new Set(DEFAULT_COMMAND_CENTER_ORDER);
+  const storedOrder = Array.isArray(rawCommandCenter.sectionOrder) ? rawCommandCenter.sectionOrder.filter(k => validKeys.has(k)) : [];
+  let sectionOrder = [...storedOrder, ...DEFAULT_COMMAND_CENTER_ORDER.filter(k => !storedOrder.includes(k))];
+  const needsCalendarMigration = rawCommandCenter.professionalCalendarPinned !== true;
+  if (needsCalendarMigration) {
+    const pinned = ["coach", "stats", "miniCalendar"];
+    sectionOrder = [...pinned, ...sectionOrder.filter(k => !pinned.includes(k))];
+  }
+  const commandSections = { ...DEFAULT_COMMAND_CENTER_VISIBILITY, ...(rawCommandCenter.sections || {}) };
+  if (needsCalendarMigration) commandSections.miniCalendar = true;
+  return {
+    ...DEFAULT_APP_SETTINGS,
+    ...value,
+    general:{ ...DEFAULT_APP_SETTINGS.general, ...(value.general || {}) },
+    routine:{ ...DEFAULT_APP_SETTINGS.routine, ...(value.routine || {}) },
+    tasks:{ ...DEFAULT_APP_SETTINGS.tasks, ...(value.tasks || {}), completedVisibility:"show" },
+    commandCenter:{
+      ...DEFAULT_APP_SETTINGS.commandCenter,
+      ...rawCommandCenter,
+      visibleCount: Math.max(1, Number(rawCommandCenter.visibleCount || DEFAULT_APP_SETTINGS.commandCenter.visibleCount || 8)),
+      layout: ["compact", "balanced", "wide"].includes(rawCommandCenter.layout) ? rawCommandCenter.layout : DEFAULT_APP_SETTINGS.commandCenter.layout,
+      density: ["compact", "comfortable"].includes(rawCommandCenter.density) ? rawCommandCenter.density : DEFAULT_APP_SETTINGS.commandCenter.density,
+      showSectionNumbers: rawCommandCenter.showSectionNumbers !== false,
+      showStatusBar: rawCommandCenter.showStatusBar !== false,
+      defaultExpanded: rawCommandCenter.defaultExpanded === true,
+      professionalCalendarPinned:true,
+      sectionOrder,
+      sections:commandSections,
+    },
+    mopas:{ ...DEFAULT_APP_SETTINGS.mopas, ...(value.mopas || {}) },
+    documents:{ ...DEFAULT_APP_SETTINGS.documents, ...(value.documents || {}) },
+    backup:{ ...DEFAULT_APP_SETTINGS.backup, ...(value.backup || {}) },
+    appearance:{ ...DEFAULT_APP_SETTINGS.appearance, ...(value.appearance || {}) },
+    notifications:{ ...DEFAULT_APP_SETTINGS.notifications, ...(value.notifications || {}) },
+  };
+};
 const loadAppSettings = () => mergeAppSettings(readStore(APP_SETTINGS_KEY, DEFAULT_APP_SETTINGS));
 const saveAppSettings = (settings) => writeStore(APP_SETTINGS_KEY, mergeAppSettings(settings));
 
@@ -220,6 +369,48 @@ const DAILY_ROUTINES = [
     checklist:["Open End Day Review","Save review notes","Move normal unfinished tasks","Generate tomorrow routines"],
   },
   {
+    routineKey:"check-wallet-balance",
+    space:"money",
+    title:"Check wallet balance",
+    folder:"Budget",
+    list:"Daily Money",
+    status:"To Do",
+    priority:"High",
+    time:"07:45",
+    goal:"Know how much cash and mobile money you have before spending starts.",
+    details:"Check wallet, MoMo, bank balance, and note any expected income or payment.",
+    checklist:["Check wallet cash","Check MoMo balance","Check bank balance","Write expected income today"],
+  },
+  {
+    routineKey:"record-today-money",
+    space:"money",
+    title:"Record today's income and expenses",
+    folder:"Budget",
+    list:"Daily Money",
+    status:"To Do",
+    priority:"High",
+    time:"22:20",
+    goal:"Close the day with clear income, expenses, savings, and purchase decisions.",
+    details:"Record every income and expense for today, update planned purchases, and review future goals.",
+    checklist:["Record today's income","Record today's expenses","Review planned purchases","Update future goals"],
+  },
+  {
+    routineKey:"itsinda-weekly-savings",
+    space:"money",
+    title:"Send 20,000 RWF to ITSINDA",
+    folder:"Budget",
+    list:"Weekly Savings",
+    status:"To Do",
+    priority:"Urgent",
+    time:"17:30",
+    goal:"Protect the weekly ITSINDA savings discipline.",
+    details:"Every Friday, send 20,000 RWF to ITSINDA and mark this task as Done after payment.",
+    checklist:["Confirm available balance","Send 20,000 RWF to ITSINDA","Record it as savings","Mark this task Done"],
+    days:[5],
+    amount:ITSINDA_WEEKLY_AMOUNT,
+    moneyCategory:"ITSINDA",
+  },
+  {
     routineKey:"money-savings-review",
     space:"money",
     title:"Money / savings review",
@@ -253,6 +444,8 @@ const buildRoutineTask = (routine, routineDate) => ({
   mopasTaskType: routine.space === "mopas" ? (routine.mopasTaskType || "Normal Task") : undefined,
   routineKey: routine.routineKey,
   routineDate,
+  amount: routine.amount,
+  moneyCategory: routine.moneyCategory,
 });
 const hasRoutineForDate = (tasks, routineKey, routineDate) => tasks.some(t =>
   (t && t.isRoutine && t.routineKey === routineKey && t.routineDate === routineDate) ||
@@ -260,7 +453,9 @@ const hasRoutineForDate = (tasks, routineKey, routineDate) => tasks.some(t =>
 );
 const ensureRoutineTasksForDate = (tasks, routineDate = localTodayISO()) => {
   const existing = Array.isArray(tasks) ? tasks : [];
-  const missing = DAILY_ROUTINES.filter(r => !hasRoutineForDate(existing, r.routineKey, routineDate)).map(r => buildRoutineTask(r, routineDate));
+  const routineDay = (parseDateKey(routineDate) || new Date()).getDay();
+  const dueRoutines = DAILY_ROUTINES.filter(r => !Array.isArray(r.days) || r.days.includes(routineDay));
+  const missing = dueRoutines.filter(r => !hasRoutineForDate(existing, r.routineKey, routineDate)).map(r => buildRoutineTask(r, routineDate));
   return missing.length ? [...missing, ...existing] : existing;
 };
 const uniqueById = (items) => {
@@ -527,6 +722,29 @@ const buildAppBackup = (tasks) => ({
   structuredGoals:loadStructuredGoals(),
   settings:loadAppSettings(),
 });
+
+const rwf = (value) => `${Number(value || 0).toLocaleString()} RWF`;
+const numberValue = (value) => Number(String(value || "").replace(/,/g, "")) || 0;
+const moneyProgress = (saved, target) => {
+  const s = numberValue(saved);
+  const t = numberValue(target);
+  return t > 0 ? Math.min(100, Math.round((s / t) * 100)) : 0;
+};
+const getWeekRangeKeys = (baseDate = new Date()) => {
+  const start = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  start.setDate(start.getDate() - start.getDay());
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { start:dateKey(start), end:dateKey(end) };
+};
+const DEFAULT_PURCHASE_GOALS = [
+  { id:"PG-laptop", title:"Laptop", targetAmount:1200000, savedAmount:0, priority:"High", deadline:"", note:"Main work tool upgrade" },
+  { id:"PG-tablet", title:"Drawing tablet", targetAmount:500000, savedAmount:0, priority:"High", deadline:"", note:"Creative production tool" },
+];
+const DEFAULT_FUTURE_GOALS = [
+  { id:"FG-land", title:"Buy Land", targetAmount:0, savedAmount:0, deadline:"", category:"Life Goal", note:"Long-term foundation" },
+  { id:"FG-studio", title:"Open AFTERGLOW Studio", targetAmount:0, savedAmount:0, deadline:"", category:"Business Goal", note:"Creative studio future" },
+];
 
 
 const TODAY_DISCIPLINE_BLOCKS = [
@@ -1250,10 +1468,22 @@ function EndDayReviewModal({ tasks, onClose, onSaveReview, onMoveNormalToTomorro
   );
 }
 
-function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSpace, setSelected, setShowNewTask, setShowEndDayReview }) {
+function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSpace, setSelected, setShowNewTask, setShowEndDayReview, onUpdate }) {
   const [showFullSchedule, setShowFullSchedule] = useState(false);
   const [showWeeklyProgress, setShowWeeklyProgress] = useState(false);
   const [showSpaceHealth, setShowSpaceHealth] = useState(false);
+  const [taskCategoryView, setTaskCategoryView] = useState("late");
+  const [commandCenterExpanded, setCommandCenterExpanded] = useState(false);
+  const [moneyEntries, setMoneyEntries] = useState(() => readStore(MONEY_ENTRIES_KEY, []));
+  const [purchaseGoals, setPurchaseGoals] = useState(() => readStore(PURCHASE_GOALS_KEY, DEFAULT_PURCHASE_GOALS));
+  const [futureGoals, setFutureGoals] = useState(() => readStore(FUTURE_GOALS_KEY, DEFAULT_FUTURE_GOALS));
+  const [moneyForm, setMoneyForm] = useState({ type:"expense", amount:"", category:"", note:"" });
+  const [purchaseForm, setPurchaseForm] = useState({ title:"", targetAmount:"", savedAmount:"", priority:"High", deadline:"", note:"" });
+  const [futureForm, setFutureForm] = useState({ title:"", targetAmount:"", savedAmount:"", deadline:"", category:"Life Goal", note:"" });
+
+  useEffect(() => { writeStore(MONEY_ENTRIES_KEY, moneyEntries); }, [moneyEntries]);
+  useEffect(() => { writeStore(PURCHASE_GOALS_KEY, purchaseGoals); }, [purchaseGoals]);
+  useEffect(() => { writeStore(FUTURE_GOALS_KEY, futureGoals); }, [futureGoals]);
 
   const fmtDate = (date) => {
     const y = date.getFullYear();
@@ -1284,6 +1514,22 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
   const monthStartKey = `${todayStart.getFullYear()}-${String(todayStart.getMonth() + 1).padStart(2, "0")}`;
   const spaceName = (id) => (SPACES.find(s => s.id === id)?.name || id || "Unknown Space");
   const spaceColor = (id) => (SPACES.find(s => s.id === id)?.color || C.orange);
+  const mergedSettings = mergeAppSettings(settings || {});
+  const commandCenterSettings = mergedSettings.commandCenter || DEFAULT_APP_SETTINGS.commandCenter;
+  const commandSectionLabels = COMMAND_CENTER_SECTIONS.reduce((acc, item) => ({ ...acc, [item.key]:item.label }), {});
+  const commandVisibleOrder = (commandCenterSettings.sectionOrder || DEFAULT_COMMAND_CENTER_ORDER).filter(key => commandCenterSettings.sections?.[key] !== false);
+  const commandDisplayLimit = Math.max(1, Number(commandCenterSettings.visibleCount || 6));
+  const commandShownKeys = commandCenterExpanded ? commandVisibleOrder : commandVisibleOrder.slice(0, commandDisplayLimit);
+  const commandVisible = (key) => commandShownKeys.includes(key);
+  const commandOrder = (key) => { const idx = commandVisibleOrder.indexOf(key); return idx < 0 ? 999 : idx; };
+  const commandGridMin = commandCenterSettings.layout === "compact" ? 260 : commandCenterSettings.layout === "wide" ? 380 : 320;
+  const commandCardGap = commandCenterSettings.density === "compact" ? 10 : 16;
+  const visibleSectionCount = commandVisibleOrder.length;
+  const enabledSectionCount = Object.values(commandCenterSettings.sections || {}).filter(Boolean).length;
+
+  useEffect(() => {
+    setCommandCenterExpanded(!!commandCenterSettings.defaultExpanded);
+  }, [commandCenterSettings.defaultExpanded]);
 
   const documents = Array.isArray(readStore(DOCUMENTS_KEY, [])) ? readStore(DOCUMENTS_KEY, []) : [];
   const documentWarningDays = Number(settings?.documents?.expiryWarningDays || 30);
@@ -1746,6 +1992,53 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
     </div>
   );
 
+  const CommandCenterControlPanel = () => {
+    const hiddenCount = Math.max(0, commandVisibleOrder.length - commandShownKeys.length);
+    const shownCount = commandShownKeys.length;
+    const openCalendar = () => goView(activeSpace || "wakeup", "calendar");
+    return (
+      <div style={{ ...PNL, minWidth:0, borderLeft:"5px solid "+C.orange, padding:22, background:`linear-gradient(135deg, ${C.surface}, ${C.elevated})`, boxShadow:"0 16px 45px #0004" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) auto", gap:14, alignItems:"start" }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:5 }}>PROFESSIONAL COMMAND CENTER</div>
+            <h2 style={{ margin:"0 0 6px", color:C.cream, fontSize:24, lineHeight:1.15 }}>{mergedSettings.appearance.dashboardLabel || "Command Center"}</h2>
+            <div style={{ color:C.creamSoft, fontSize:13, lineHeight:1.5 }}>Calendar is preserved. Financial Health now lives inside Money & Savings. Choose sections in Settings, arrange their order, and use Show More when you need the full control board.</div>
+          </div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"flex-end" }}>
+            <Btn small ghost onClick={openCalendar}>Open Calendar</Btn>
+            <Btn small ghost onClick={() => setView("settings")}>Customize</Btn>
+            {hiddenCount > 0 ? <Btn small orange onClick={() => setCommandCenterExpanded(v => !v)}>{commandCenterExpanded ? "Show Less" : `Show More (${hiddenCount})`}</Btn> : <Badge color={C.green}>All shown</Badge>}
+          </div>
+        </div>
+        {commandCenterSettings.showStatusBar !== false && (
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginTop:16 }}>
+            {[
+              { label:"Visible now", value:shownCount, color:C.orange },
+              { label:"Enabled sections", value:enabledSectionCount, color:C.green },
+              { label:"Total sections", value:visibleSectionCount, color:C.blue },
+              { label:"Layout", value:commandCenterSettings.layout || "balanced", color:C.gold },
+            ].map(item => (
+              <div key={item.label} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:10 }}>
+                <div style={{ color:item.color, fontSize:20, fontWeight:900, lineHeight:1 }}>{item.value}</div>
+                <div style={{ color:C.creamSoft, fontSize:11, marginTop:4 }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
+          {commandVisibleOrder.map((key, index) => {
+            const active = commandShownKeys.includes(key);
+            return (
+              <span key={key} style={{ padding:"7px 10px", borderRadius:999, border:"1px solid "+(active ? C.orange : C.border), background:active ? C.orange+"18" : C.bg, color:active ? C.cream : C.muted, fontSize:11, fontWeight:800 }}>
+                {commandCenterSettings.showSectionNumbers !== false ? `${index + 1}. ` : ""}{commandSectionLabels[key] || key}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const LifeOSUpgradePanel = () => (
     <div style={{ ...PNL, padding:22, borderLeft:"5px solid "+C.gold, background:`linear-gradient(135deg, ${C.surface}, ${C.bg})` }}>
       {sectionTitle("SAMUEL LIFE OS / FINAL UPGRADE", "This is the real upgrade: your morning, MOPAS work, health, drawing, AFTERGLOW, and money are now tracked in one command system.", <Badge color={lifeSystemScore >= 70 ? C.green : lifeSystemScore >= 35 ? C.orange : C.red}>{lifeSystemScore}% today</Badge>)}
@@ -1773,13 +2066,6 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
                 <Badge color={item.done ? C.green : C.muted}>{item.done ? "Done" : "Open"}</Badge>
               </div>
             ))}
-          </div>
-        </div>
-        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:14 }}>
-          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>SUCCESS RULE</div>
-          <div style={{ color:C.cream, fontSize:15, fontWeight:900, lineHeight:1.35, marginBottom:8 }}>Keep the chain alive. Do not chase perfection.</div>
-          <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.55 }}>
-            Every day must leave proof: one tender move, one money follow-up, one body action, one drawing output, one AFTERGLOW step, and one honest review.
           </div>
         </div>
       </div>
@@ -1826,7 +2112,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
     };
     return (
       <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.gold }}>
-        {sectionTitle("MINI CALENDAR", "Click a date to see deadline density.", <Badge color={C.gold}>{monthLabel}</Badge>)}
+        {sectionTitle("CALENDAR / MONTH VIEW", "Calendar was not removed. This dashboard calendar gives a fast month view; use Open Full Calendar for the full workspace calendar.", <Badge color={C.gold}>{monthLabel}</Badge>)}
         <div style={{ display:"flex", gap:8, marginBottom:10 }}>
           <Btn small ghost onClick={() => setMiniDate(new Date(y, m - 1, 1))}>Prev</Btn>
           <Btn small ghost onClick={() => { setMiniDate(todayStart); setMiniSelected(todayKey); }}>Today</Btn>
@@ -1859,6 +2145,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
         </div>
         <div style={{ display:"grid", gap:8, marginTop:10 }}>
           <Btn orange onClick={createForDate}>+ Create task for selected date</Btn>
+          <Btn ghost onClick={() => goView(activeSpace || "wakeup", "calendar")}>Open Full Calendar</Btn>
           <Btn ghost onClick={() => setShowEndDayReview(true)}>End Day Review</Btn>
           <Btn ghost onClick={() => goView("mopas", "daily report")}>Daily Report</Btn>
         </div>
@@ -1890,22 +2177,167 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
     </div>
   );
 
+  const taskGroups = useMemo(() => {
+    const openTasks = tasks.filter(t => t.status !== "Done");
+    const inProgress = sortTasksSmart(openTasks.filter(t => t.status === "In Progress"));
+    const late = sortTasksSmart(openTasks.filter(isLateTask));
+    const undone = sortTasksSmart(openTasks.filter(t => !isDateKey(t.due) && t.status !== "In Progress" && t.status !== "Blocked"));
+    const active = sortTasksSmart(openTasks.filter(t => t.status === "To Do" && !isLateTask(t) && isDateKey(t.due)));
+    const completed = sortTasksSmart(tasks.filter(t => t.status === "Done"));
+    return { active, inProgress, late, undone, completed };
+  }, [tasks]);
+
+  const moneyStats = useMemo(() => {
+    const entries = Array.isArray(moneyEntries) ? moneyEntries : [];
+    const week = getWeekRangeKeys(todayStart);
+    const byDate = entries.filter(e => e.date === todayKey);
+    const inWeek = entries.filter(e => e.date >= week.start && e.date <= week.end);
+    const inMonth = entries.filter(e => String(e.date || "").startsWith(monthStartKey));
+    const sum = (items, type) => items.filter(e => e.type === type).reduce((total, e) => total + numberValue(e.amount), 0);
+    const todayIncome = sum(byDate, "income");
+    const todayExpense = sum(byDate, "expense");
+    const todaySavings = sum(byDate, "savings");
+    const weeklySavings = sum(inWeek, "savings");
+    const monthlySavings = sum(inMonth, "savings");
+    const itsindaThisWeek = inWeek.filter(e => String(e.category || "").toLowerCase().includes("itsinda")).reduce((total, e) => total + numberValue(e.amount), 0);
+    const itsindaPaid = itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT || tasks.some(t => t.routineKey === "itsinda-weekly-savings" && t.routineDate >= week.start && t.routineDate <= week.end && t.status === "Done");
+    return { todayIncome, todayExpense, todaySavings, todayNet:todayIncome - todayExpense, weeklySavings, monthlySavings, itsindaThisWeek, itsindaPaid };
+  }, [moneyEntries, tasks, todayKey, todayStart, monthStartKey]);
+
+  const addMoneyEntry = (type = moneyForm.type) => {
+    const amount = numberValue(moneyForm.amount);
+    if (!amount) return;
+    const entry = { id:"ME-" + Date.now(), date:todayKey, type, amount, category:moneyForm.category || (type === "savings" ? "Savings" : type === "income" ? "Income" : "Expense"), note:moneyForm.note || "" };
+    setMoneyEntries(prev => [entry, ...(Array.isArray(prev) ? prev : [])]);
+    setMoneyForm({ type:"expense", amount:"", category:"", note:"" });
+  };
+
+  const markItsindaPaid = () => {
+    const entry = { id:"ME-ITSINDA-" + Date.now(), date:todayKey, type:"savings", amount:ITSINDA_WEEKLY_AMOUNT, category:"ITSINDA", note:"Weekly ITSINDA contribution" };
+    setMoneyEntries(prev => [entry, ...(Array.isArray(prev) ? prev : [])]);
+    const fridayTask = tasks.find(t => t.routineKey === "itsinda-weekly-savings" && t.routineDate === todayKey);
+    if (fridayTask && typeof onUpdate === "function") onUpdate({ ...fridayTask, status:"Done", completedAt:new Date().toISOString(), locked:true });
+    else if (fridayTask) openTask(fridayTask);
+  };
+
+  const addPurchaseGoal = () => {
+    if (!String(purchaseForm.title || "").trim()) return;
+    setPurchaseGoals(prev => [{ id:"PG-" + Date.now(), ...purchaseForm, targetAmount:numberValue(purchaseForm.targetAmount), savedAmount:numberValue(purchaseForm.savedAmount) }, ...(Array.isArray(prev) ? prev : [])]);
+    setPurchaseForm({ title:"", targetAmount:"", savedAmount:"", priority:"High", deadline:"", note:"" });
+  };
+  const addFutureGoal = () => {
+    if (!String(futureForm.title || "").trim()) return;
+    setFutureGoals(prev => [{ id:"FG-" + Date.now(), ...futureForm, targetAmount:numberValue(futureForm.targetAmount), savedAmount:numberValue(futureForm.savedAmount) }, ...(Array.isArray(prev) ? prev : [])]);
+    setFutureForm({ title:"", targetAmount:"", savedAmount:"", deadline:"", category:futureForm.category || "Life Goal", note:"" });
+  };
+
+  const TaskCategoryPanel = () => {
+    const categories = [
+      { key:"active", title:"ACTIVE TASKS", list:taskGroups.active, color:C.blue, sub:"Due today or future, not started" },
+      { key:"progress", title:"IN PROGRESS", list:taskGroups.inProgress, color:C.orange, sub:"Started but not finished" },
+      { key:"late", title:"LATE TASKS", list:taskGroups.late, color:C.red, sub:"Deadline passed" },
+      { key:"undone", title:"UNDONE TASKS", list:taskGroups.undone, color:C.gold, sub:"No deadline but still open" },
+      { key:"completed", title:"COMPLETED TASKS", list:taskGroups.completed, color:C.green, sub:"Done, locked, and moved down" },
+    ];
+    const active = categories.find(c => c.key === taskCategoryView) || null;
+    return (
+      <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+(active ? active.color : C.blue) }}>
+        {sectionTitle("TASK CATEGORIES", "Late, undone, in-progress, and completed tasks are separated for cleaner execution.", active ? <Btn small ghost onClick={() => setTaskCategoryView(null)}>Close View More</Btn> : null)}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:10, marginBottom:active ? 14 : 0 }}>
+          {categories.map(cat => (
+            <div key={cat.key} style={{ background:C.bg, border:"1px solid "+(taskCategoryView === cat.key ? cat.color : C.border), borderLeft:"4px solid "+cat.color, borderRadius:10, padding:10 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center" }}><span style={{ color:C.cream, fontSize:12, fontWeight:900 }}>{cat.title}</span><Badge color={cat.color}>{cat.list.length}</Badge></div>
+              <div style={{ color:C.muted, fontSize:11, margin:"5px 0 9px" }}>{cat.sub}</div>
+              <Btn small ghost onClick={() => setTaskCategoryView(taskCategoryView === cat.key ? null : cat.key)}>View More</Btn>
+            </div>
+          ))}
+        </div>
+        {active && (
+          <div style={{ display:"grid", gap:8, maxHeight:360, overflowY:"auto" }}>
+            {active.list.length ? active.list.slice(0, 20).map(task => <TaskRow key={task.id} task={task} compact />) : <Empty text={`No ${active.title.toLowerCase()} now.`} />}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const FinancialHealthPanel = () => (
+    <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.gold }}>
+      {sectionTitle("FINANCIAL HEALTH", "Track daily income, expenses, ITSINDA, purchases, and future goals.", <Btn small ghost onClick={() => goView("money", "list")}>Open Money Space</Btn>)}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginBottom:14 }}>
+        {[
+          { l:"Today Income", v:rwf(moneyStats.todayIncome), c:C.green },
+          { l:"Today Expense", v:rwf(moneyStats.todayExpense), c:C.red },
+          { l:"Net Balance", v:rwf(moneyStats.todayNet), c:moneyStats.todayNet >= 0 ? C.green : C.red },
+          { l:"Weekly Savings", v:rwf(moneyStats.weeklySavings), c:C.gold },
+          { l:"Monthly Savings", v:rwf(moneyStats.monthlySavings), c:C.blue },
+          { l:"ITSINDA", v:moneyStats.itsindaPaid ? "Paid" : "Pending", c:moneyStats.itsindaPaid ? C.green : C.orange },
+        ].map(x => <div key={x.l} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:x.c, fontWeight:900, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{x.v}</div><div style={{ color:C.creamSoft, fontSize:11, marginTop:4 }}>{x.l}</div></div>)}
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:12 }}>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>DAILY LEDGER</div>
+          <Select label="TYPE" options={["income", "expense", "savings"]} value={moneyForm.type} onChange={e => setMoneyForm(f => ({ ...f, type:e.target.value }))} />
+          <Input label="AMOUNT" type="number" value={moneyForm.amount} onChange={e => setMoneyForm(f => ({ ...f, amount:e.target.value }))} placeholder="Example: 20000" />
+          <Input label="CATEGORY" value={moneyForm.category} onChange={e => setMoneyForm(f => ({ ...f, category:e.target.value }))} placeholder="Transport, Client payment, ITSINDA..." />
+          <Input label="NOTE" value={moneyForm.note} onChange={e => setMoneyForm(f => ({ ...f, note:e.target.value }))} placeholder="What happened?" />
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn orange onClick={() => addMoneyEntry(moneyForm.type)}>Add Entry</Btn><Btn ghost onClick={markItsindaPaid}>Mark ITSINDA Paid</Btn></div>
+        </div>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>PLANNED PURCHASES</div>
+          <div style={{ display:"grid", gap:8, marginBottom:10 }}>
+            {purchaseGoals.slice(0, 3).map(goal => { const pct = moneyProgress(goal.savedAmount, goal.targetAmount); return <div key={goal.id} style={{ border:"1px solid "+C.border, borderRadius:10, padding:9 }}><div style={{ display:"flex", justifyContent:"space-between", gap:8 }}><b style={{ color:C.cream, fontSize:12 }}>{goal.title}</b><Badge color={C.gold}>{pct}%</Badge></div><ProgressBar value={pct} color={C.gold} height={6} /><div style={{ color:C.muted, fontSize:11, marginTop:5 }}>{rwf(goal.savedAmount)} / {rwf(goal.targetAmount)}</div></div>; })}
+          </div>
+          <Input label="NEW PURCHASE" value={purchaseForm.title} onChange={e => setPurchaseForm(f => ({ ...f, title:e.target.value }))} placeholder="Laptop, camera, tablet..." />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}><Input label="TARGET" type="number" value={purchaseForm.targetAmount} onChange={e => setPurchaseForm(f => ({ ...f, targetAmount:e.target.value }))} /><Input label="SAVED" type="number" value={purchaseForm.savedAmount} onChange={e => setPurchaseForm(f => ({ ...f, savedAmount:e.target.value }))} /></div>
+          <Btn small orange onClick={addPurchaseGoal}>Add Purchase Goal</Btn>
+        </div>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>FUTURE GOALS</div>
+          <div style={{ display:"grid", gap:8, marginBottom:10 }}>
+            {futureGoals.slice(0, 3).map(goal => { const pct = moneyProgress(goal.savedAmount, goal.targetAmount); return <div key={goal.id} style={{ border:"1px solid "+C.border, borderRadius:10, padding:9 }}><div style={{ display:"flex", justifyContent:"space-between", gap:8 }}><b style={{ color:C.cream, fontSize:12 }}>{goal.title}</b><Badge color={C.blue}>{pct}%</Badge></div><ProgressBar value={pct} color={C.blue} height={6} /><div style={{ color:C.muted, fontSize:11, marginTop:5 }}>{goal.category || "Future"} · {rwf(goal.savedAmount)} / {rwf(goal.targetAmount)}</div></div>; })}
+          </div>
+          <Input label="NEW FUTURE GOAL" value={futureForm.title} onChange={e => setFutureForm(f => ({ ...f, title:e.target.value }))} placeholder="Buy land, studio, car..." />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}><Input label="TARGET" type="number" value={futureForm.targetAmount} onChange={e => setFutureForm(f => ({ ...f, targetAmount:e.target.value }))} /><Input label="SAVED" type="number" value={futureForm.savedAmount} onChange={e => setFutureForm(f => ({ ...f, savedAmount:e.target.value }))} /></div>
+          <Btn small orange onClick={addFutureGoal}>Add Future Goal</Btn>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ display:"grid", gap:16, minWidth:0 }}>
-      <CoachPanel />
-      <LifeOSUpgradePanel />
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(2px, 1fr))", gap:12 }}>
+      <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.blue }}>
+        {sectionTitle("TODAY DISCIPLINE PLAN", "Follow the current block first. This plan must stay above the command center.", <Btn small ghost onClick={() => setShowFullSchedule(v => !v)}>{showFullSchedule ? "Hide Schedule" : "Show Full Schedule"}</Btn>)}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:10, marginBottom:12 }}>
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.orange, fontWeight:900, fontSize:20 }}>{currentBlock ? currentBlock.start : dayComplete ? "23:00" : "06:00"}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Current block</div></div>
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.green, fontWeight:900, fontSize:20 }}>{completedBlocks.length}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Completed time</div></div>
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.blue, fontWeight:900, fontSize:20 }}>{remainingBlocks.length}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Remaining blocks</div></div>
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.gold, fontWeight:900, fontSize:20 }}>{formatMinutes(nowMinutes)}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Now</div></div>
+        </div>
+        <div style={{ color:dayComplete ? C.green : !dayStarted ? C.gold : C.cream, fontSize:13, marginBottom:12, lineHeight:1.5 }}>{disciplineMessage}</div>
+        <div style={{ display:"grid", gap:8 }}>
+          {showFullSchedule
+            ? scheduleBlocks.map(block => <ScheduleRow key={block.start + block.title} block={block} />)
+            : schedulePreviewBlocks.length ? schedulePreviewBlocks.map(block => <ScheduleRow key={block.start + block.title} block={block} />) : <Empty text={disciplineMessage} />}
+        </div>
+      </div>
+      <CommandCenterControlPanel />
+      {commandVisible("coach") && <div style={{ order:commandOrder("coach") }}><CoachPanel /></div>}
+      {commandVisible("stats") && <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(2px, 1fr))", gap:12, order:commandOrder("stats") }}>
         <StatCard label="Active Tasks" value={activeTaskCount} color={C.blue} sub="Still open" />
         <StatCard label="Completed" value={done} color={C.green} sub="Locked history" />
         <StatCard label="Overdue" value={dashboardData.overdue.length} color={dashboardData.overdue.length ? C.red : C.green} sub="Late tasks" />
         <StatCard label="Routine Progress" value={`${routinePct}%`} color={routinePct >= 80 ? C.green : routinePct >= 40 ? C.orange : C.red} sub={`${completedRoutineKeys.size}/${DAILY_ROUTINES.length} done`} />
         <StatCard label="Expired Docs" value={documentAlerts.expired.length} color={documentAlerts.expired.length ? C.red : C.green} sub="Need renewal" />
         <StatCard label="Expiring Docs" value={documentAlerts.expiringSoon.length} color={documentAlerts.expiringSoon.length ? C.orange : C.green} sub={`Within ${documentWarningDays} days`} />
-      </div>
+      </div>}
+
+      {commandVisible("taskCategories") && <div style={{ order:commandOrder("taskCategories") }}><TaskCategoryPanel /></div>}
 
       <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1.35fr) minmax(320px, .65fr)", gap:16, alignItems:"start" }}>
         <div style={{ display:"grid", gap:16, minWidth:0 }}>
-          <div style={{ ...PNL, padding:22, background:`linear-gradient(135deg, ${C.surface}, ${C.elevated})`, borderLeft:"4px solid "+C.orange }}>
+          {commandVisible("todayFocus") && <div style={{ ...PNL, padding:22, background:`linear-gradient(135deg, ${C.surface}, ${C.elevated})`, borderLeft:"4px solid "+C.orange, order:commandOrder("todayFocus") }}>
             {sectionTitle("TODAY FOCUS / PRIORITY ACTIONS", "A clean control center for the next important work.", <Badge color={C.orange}>Top {dashboardData.todayFocus.length}</Badge>)}
             <div style={{ color:C.creamSoft, fontSize:13, lineHeight:1.55, marginBottom:14 }}>
               Focus on overdue, urgent, and due-today work first. Workspace completion is <b style={{ color:C.green }}>{completionPct}%</b>.
@@ -1913,11 +2345,11 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
             <div style={{ display:"grid", gap:8 }}>
               {dashboardData.todayFocus.length ? sortTasksSmart(dashboardData.todayFocus).map(t => <TaskRow key={t.id} task={t} compact />) : <Empty text="No urgent priority found. Use this time for MOPAS follow-up or creative growth." />}
             </div>
-          </div>
+          </div>}
 
-          <LateTasksPanel />
+          {commandVisible("lateTasks") && <div style={{ order:commandOrder("lateTasks") }}><LateTasksPanel /></div>}
 
-          <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.gold }}>
+          {commandVisible("dailyRoutine") && <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.gold, order:commandOrder("dailyRoutine") }}>
             {sectionTitle("DAILY ROUTINE PROGRESS", "Daily tasks are created once per day and missed routines stay as history.", <Badge color={tomorrowReady ? C.green : C.gold}>{tomorrowReady ? "Tomorrow ready" : "Tomorrow not prepared"}</Badge>)}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginBottom:14 }}>
               <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:11 }}><div style={{ color:C.green, fontSize:22, fontWeight:900 }}>{completedRoutineKeys.size}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Completed</div></div>
@@ -1943,31 +2375,9 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
                 );
               })}
             </div>
-          </div>
+          </div>}
 
-          <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.blue }}>
-            {sectionTitle("TODAY DISCIPLINE PLAN", "Follow the current block. Small discipline today creates strong creative output tomorrow.", <Btn small ghost onClick={() => setShowFullSchedule(v => !v)}>{showFullSchedule ? "Hide Schedule" : "Show Full Schedule"}</Btn>)}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:10, marginBottom:12 }}>
-              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.orange, fontWeight:900, fontSize:20 }}>{currentBlock ? currentBlock.start : dayComplete ? "23:00" : "06:00"}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Current block</div></div>
-              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.green, fontWeight:900, fontSize:20 }}>{completedBlocks.length}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Completed time</div></div>
-              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.blue, fontWeight:900, fontSize:20 }}>{remainingBlocks.length}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Remaining blocks</div></div>
-              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.gold, fontWeight:900, fontSize:20 }}>{formatMinutes(nowMinutes)}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Now</div></div>
-            </div>
-            <div style={{ color:dayComplete ? C.green : !dayStarted ? C.gold : C.cream, fontSize:13, marginBottom:12, lineHeight:1.5 }}>{disciplineMessage}</div>
-            <div style={{ display:"grid", gap:8 }}>
-              {showFullSchedule
-                ? scheduleBlocks.map(block => <ScheduleRow key={block.start + block.title} block={block} />)
-                : schedulePreviewBlocks.length ? schedulePreviewBlocks.map(block => <ScheduleRow key={block.start + block.title} block={block} />) : <Empty text={disciplineMessage} />}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display:"grid", gap:16, minWidth:0 }}>
-          <MiniCalendarPanel />
-
-          <GoalProgressPanel />
-
-          <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+(tomorrowReady ? C.green : C.gold) }}>
+          {commandVisible("endDayReview") && <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+(tomorrowReady ? C.green : C.gold), order:commandOrder("endDayReview") }}>
             {sectionTitle("END DAY REVIEW", "Close today without losing routine history.")}
             <div style={{ color:C.cream, fontSize:14, fontWeight:800, marginBottom:8 }}>{dayComplete ? "Ready to close today" : "Prepare the close-out early"}</div>
             <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5, marginBottom:12 }}>
@@ -1978,21 +2388,27 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
               <Badge color={unfinishedRoutineTasks.length ? C.orange : C.green}>{unfinishedRoutineTasks.length} routine task(s) open today</Badge>
               <Btn orange onClick={() => setShowEndDayReview(true)}>Open End Day Review</Btn>
             </div>
-          </div>
+          </div>}
 
-          <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.blue }}>
+          {commandVisible("tomorrowPrep") && <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.blue, order:commandOrder("tomorrowPrep") }}>
             {sectionTitle("TOMORROW PREPARATION STATUS", "Routine readiness and priority carry-over.")}
             <div style={{ display:"grid", gap:8 }}>
               <div style={{ display:"flex", justifyContent:"space-between", color:C.creamSoft, fontSize:12 }}><span>Tomorrow routine tasks</span><b style={{ color:tomorrowReady ? C.green : C.gold }}>{tomorrowRoutineKeys.size}/{DAILY_ROUTINES.length}</b></div>
               <ProgressBar value={DAILY_ROUTINES.length ? Math.round((tomorrowRoutineKeys.size / DAILY_ROUTINES.length) * 100) : 0} color={tomorrowReady ? C.green : C.gold} height={7} />
               <div style={{ color:C.muted, fontSize:11, lineHeight:1.5 }}>Use End Day Review to prepare tomorrow and keep today’s missed routines as a record.</div>
             </div>
-          </div>
+          </div>}
         </div>
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(300px, 1fr))", gap:16 }}>
-        <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.blue }}>
+      <div style={{ display:"grid", gridTemplateColumns:`repeat(auto-fit, minmax(${commandGridMin}px, 1fr))`, gap:commandCardGap }}>
+        {commandVisible("lifeOS") && <div style={{ order:commandOrder("lifeOS") }}><LifeOSUpgradePanel /></div>}
+        {commandVisible("miniCalendar") && <div style={{ order:commandOrder("miniCalendar") }}><MiniCalendarPanel /></div>}
+        {commandVisible("goalProgress") && <div style={{ order:commandOrder("goalProgress") }}><GoalProgressPanel /></div>}
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:`repeat(auto-fit, minmax(${commandGridMin}px, 1fr))`, gap:commandCardGap }}>
+        {commandVisible("mopasAlerts") && <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.blue, order:commandOrder("mopasAlerts") }}>
           {sectionTitle("MOPAS ALERTS", "Urgent tender and operations work.", <Btn small ghost onClick={() => goView("mopas", "list")}>Open MOPAS</Btn>)}
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:10, marginBottom:12 }}>
             {[{l:"Open",v:dashboardData.mopasOpen.length,c:C.orange},{l:"Urgent",v:dashboardData.mopasOpen.filter(t => t.priority === "Urgent").length,c:C.red},{l:"Due this week",v:dashboardData.mopasThisWeek.length,c:C.blue},{l:"Done",v:dashboardData.mopas.filter(t => t.status === "Done").length,c:C.green}].map(x => (
@@ -2005,35 +2421,401 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
           <div style={{ display:"grid", gap:8 }}>
             {dashboardData.mopasUrgent.length ? dashboardData.mopasUrgent.map(t => <TaskRow key={t.id} task={t} compact />) : <Empty text="No urgent MOPAS task now." />}
           </div>
-        </div>
+        </div>}
 
-        <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+(documentAlerts.expired.length ? C.red : documentAlerts.expiringSoon.length ? C.orange : C.green) }}>
+        {commandVisible("documentAlerts") && <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+(documentAlerts.expired.length ? C.red : documentAlerts.expiringSoon.length ? C.orange : C.green), order:commandOrder("documentAlerts") }}>
           {sectionTitle("DOCUMENT EXPIRY ALERTS", "Expired and expiring documents from the document tracker.", <Btn small ghost onClick={() => goView(null, "documents")}>Open Documents</Btn>)}
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:12 }}>
             <AlertList title="Expired" list={documentAlerts.expired} color={C.red} emptyText="No expired document." type="doc" />
             <AlertList title="Expiring Soon" list={documentAlerts.expiringSoon} color={C.orange} emptyText="No document expiring within 30 days." type="doc" />
           </div>
-        </div>
+        </div>}
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(320px, 1fr))", gap:16 }}>
-        <WeeklyPanel />
-        <SpaceHealthPanel />
+      <div style={{ display:"grid", gridTemplateColumns:`repeat(auto-fit, minmax(${commandGridMin}px, 1fr))`, gap:commandCardGap }}>
+        {commandVisible("weeklyProgress") && <div style={{ order:commandOrder("weeklyProgress") }}><WeeklyPanel /></div>}
+        {commandVisible("spaceHealth") && <div style={{ order:commandOrder("spaceHealth") }}><SpaceHealthPanel /></div>}
       </div>
     </div>
   );
 }
 
-function ListView({ tasks, activeSpace, selected, setSelected, onUpdate, settings, showDoneTasks, setShowDoneTasks }) {
-  const completedVisibility = settings?.tasks?.completedVisibility || "hide";
-  const shouldShowDone = completedVisibility !== "hide" || showDoneTasks;
-  const ordered = useMemo(() => sortTasksSmart(tasks).filter(t => shouldShowDone || t.status !== "Done"), [tasks, shouldShowDone]);
-  const hiddenDoneCount = useMemo(() => tasks.filter(t => t.status === "Done").length, [tasks]);
+
+function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
+  const [moneyEntries, setMoneyEntries] = useState(() => readStore(MONEY_ENTRIES_KEY, []));
+  const [purchaseGoals, setPurchaseGoals] = useState(() => readStore(PURCHASE_GOALS_KEY, DEFAULT_PURCHASE_GOALS));
+  const [futureGoals, setFutureGoals] = useState(() => readStore(FUTURE_GOALS_KEY, DEFAULT_FUTURE_GOALS));
+  const [moneyForm, setMoneyForm] = useState({ id:"", date:localTodayISO(), type:"expense", amount:"", category:"", note:"", linkType:"none", linkedId:"" });
+  const [purchaseForm, setPurchaseForm] = useState({ id:"", title:"", targetAmount:"", savedAmount:"", priority:"High", deadline:"", note:"" });
+  const [futureForm, setFutureForm] = useState({ id:"", title:"", targetAmount:"", savedAmount:"", deadline:"", category:"Life Goal", note:"" });
+  const [showMoreMoney, setShowMoreMoney] = useState(true);
+  const [moneyMode, setMoneyMode] = useState("overview");
+
+  useEffect(() => { writeStore(MONEY_ENTRIES_KEY, moneyEntries); }, [moneyEntries]);
+  useEffect(() => { writeStore(PURCHASE_GOALS_KEY, purchaseGoals); }, [purchaseGoals]);
+  useEffect(() => { writeStore(FUTURE_GOALS_KEY, futureGoals); }, [futureGoals]);
+
+  const todayKey = localTodayISO();
+  const monthStartKey = todayKey.slice(0, 7);
+  const week = getWeekRangeKeys(new Date());
+  const safeEntries = Array.isArray(moneyEntries) ? moneyEntries : [];
+  const safePurchases = Array.isArray(purchaseGoals) ? purchaseGoals : [];
+  const safeFutureGoals = Array.isArray(futureGoals) ? futureGoals : [];
+
+  const moneyStats = useMemo(() => {
+    const entries = Array.isArray(moneyEntries) ? moneyEntries : [];
+    const weekRange = getWeekRangeKeys(new Date());
+    const byDate = entries.filter(e => e.date === todayKey);
+    const inWeek = entries.filter(e => e.date >= weekRange.start && e.date <= weekRange.end);
+    const inMonth = entries.filter(e => String(e.date || "").startsWith(monthStartKey));
+    const sum = (items, type) => items.filter(e => e.type === type).reduce((total, e) => total + numberValue(e.amount), 0);
+    const todayIncome = sum(byDate, "income");
+    const todayExpense = sum(byDate, "expense");
+    const todaySavings = sum(byDate, "savings");
+    const weeklySavings = sum(inWeek, "savings");
+    const monthlySavings = sum(inMonth, "savings");
+    const monthIncome = sum(inMonth, "income");
+    const monthExpense = sum(inMonth, "expense");
+    const itsindaThisWeek = inWeek.filter(e => String(e.category || "").toLowerCase().includes("itsinda") || e.linkType === "itsinda").reduce((total, e) => total + numberValue(e.amount), 0);
+    const itsindaPaid = itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT || tasks.some(t => t.routineKey === "itsinda-weekly-savings" && t.routineDate >= weekRange.start && t.routineDate <= weekRange.end && t.status === "Done");
+    const totalPurchaseSaved = safePurchases.reduce((total, goal) => total + numberValue(goal.savedAmount), 0);
+    const totalPurchaseTarget = safePurchases.reduce((total, goal) => total + numberValue(goal.targetAmount), 0);
+    const totalFutureSaved = safeFutureGoals.reduce((total, goal) => total + numberValue(goal.savedAmount), 0);
+    const totalFutureTarget = safeFutureGoals.reduce((total, goal) => total + numberValue(goal.targetAmount), 0);
+    return {
+      todayIncome, todayExpense, todaySavings, todayNet:todayIncome - todayExpense,
+      weeklySavings, monthlySavings, monthIncome, monthExpense, monthNet:monthIncome - monthExpense,
+      itsindaThisWeek, itsindaPaid,
+      purchaseProgress:moneyProgress(totalPurchaseSaved, totalPurchaseTarget),
+      futureProgress:moneyProgress(totalFutureSaved, totalFutureTarget),
+    };
+  }, [moneyEntries, tasks, todayKey, monthStartKey, safePurchases, safeFutureGoals]);
+
+  const resetMoneyForm = () => setMoneyForm({ id:"", date:todayKey, type:"expense", amount:"", category:"", note:"", linkType:"none", linkedId:"" });
+  const resetPurchaseForm = () => setPurchaseForm({ id:"", title:"", targetAmount:"", savedAmount:"", priority:"High", deadline:"", note:"" });
+  const resetFutureForm = () => setFutureForm({ id:"", title:"", targetAmount:"", savedAmount:"", deadline:"", category:"Life Goal", note:"" });
+
+  const applyGoalImpact = (entry, direction = 1) => {
+    if (!entry || entry.type !== "savings") return;
+    const amount = numberValue(entry.amount) * direction;
+    if (!amount) return;
+    if (entry.linkType === "purchase" && entry.linkedId) {
+      setPurchaseGoals(prev => (Array.isArray(prev) ? prev : []).map(goal => goal.id === entry.linkedId ? { ...goal, savedAmount:Math.max(0, numberValue(goal.savedAmount) + amount) } : goal));
+    }
+    if (entry.linkType === "future" && entry.linkedId) {
+      setFutureGoals(prev => (Array.isArray(prev) ? prev : []).map(goal => goal.id === entry.linkedId ? { ...goal, savedAmount:Math.max(0, numberValue(goal.savedAmount) + amount) } : goal));
+    }
+  };
+
+  const normalizeMoneyEntryFromForm = (form) => {
+    const type = form.type || "expense";
+    const linkType = type === "savings" ? (form.linkType || "none") : "none";
+    const category = linkType === "itsinda" ? "ITSINDA" : (form.category || (type === "savings" ? "Savings" : type === "income" ? "Income" : "Expense"));
+    return {
+      id: form.id || "ME-" + Date.now(),
+      date: isDateKey(form.date) ? form.date : todayKey,
+      type,
+      amount:numberValue(form.amount),
+      category,
+      note:form.note || "",
+      linkType,
+      linkedId: linkType === "purchase" || linkType === "future" ? (form.linkedId || "") : "",
+      updatedAt:new Date().toISOString(),
+    };
+  };
+
+  const saveMoneyEntry = () => {
+    const entry = normalizeMoneyEntryFromForm(moneyForm);
+    if (!entry.amount) return;
+    if (moneyForm.id) {
+      const oldEntry = safeEntries.find(e => e.id === moneyForm.id);
+      applyGoalImpact(oldEntry, -1);
+      applyGoalImpact(entry, 1);
+      setMoneyEntries(prev => (Array.isArray(prev) ? prev : []).map(e => e.id === moneyForm.id ? entry : e));
+    } else {
+      applyGoalImpact(entry, 1);
+      setMoneyEntries(prev => [entry, ...(Array.isArray(prev) ? prev : [])]);
+    }
+    resetMoneyForm();
+  };
+
+  const editMoneyEntry = (entry) => {
+    setMoneyMode("ledger");
+    setShowMoreMoney(true);
+    setMoneyForm({
+      id:entry.id || "",
+      date:entry.date || todayKey,
+      type:entry.type || "expense",
+      amount:String(entry.amount || ""),
+      category:entry.category || "",
+      note:entry.note || "",
+      linkType:entry.linkType || (String(entry.category || "").toLowerCase().includes("itsinda") ? "itsinda" : "none"),
+      linkedId:entry.linkedId || "",
+    });
+  };
+
+  const deleteMoneyEntry = (entry) => {
+    applyGoalImpact(entry, -1);
+    setMoneyEntries(prev => (Array.isArray(prev) ? prev : []).filter(e => e.id !== entry.id));
+    if (moneyForm.id === entry.id) resetMoneyForm();
+  };
+
+  const markItsindaPaid = () => {
+    const entry = { id:"ME-ITSINDA-" + Date.now(), date:todayKey, type:"savings", amount:ITSINDA_WEEKLY_AMOUNT, category:"ITSINDA", note:"Weekly ITSINDA contribution", linkType:"itsinda", linkedId:"", updatedAt:new Date().toISOString() };
+    setMoneyEntries(prev => [entry, ...(Array.isArray(prev) ? prev : [])]);
+    const fridayTask = tasks.find(t => t.routineKey === "itsinda-weekly-savings" && t.routineDate >= week.start && t.routineDate <= week.end);
+    if (fridayTask && typeof onUpdate === "function") onUpdate({ ...fridayTask, status:"Done", completedAt:new Date().toISOString(), locked:true });
+  };
+
+  const savePurchaseGoal = () => {
+    if (!String(purchaseForm.title || "").trim()) return;
+    const goal = { ...purchaseForm, id:purchaseForm.id || "PG-" + Date.now(), title:purchaseForm.title.trim(), targetAmount:numberValue(purchaseForm.targetAmount), savedAmount:numberValue(purchaseForm.savedAmount), priority:purchaseForm.priority || "High", deadline:purchaseForm.deadline || "", note:purchaseForm.note || "" };
+    setPurchaseGoals(prev => purchaseForm.id ? (Array.isArray(prev) ? prev : []).map(g => g.id === purchaseForm.id ? goal : g) : [goal, ...(Array.isArray(prev) ? prev : [])]);
+    resetPurchaseForm();
+  };
+
+  const saveFutureGoal = () => {
+    if (!String(futureForm.title || "").trim()) return;
+    const goal = { ...futureForm, id:futureForm.id || "FG-" + Date.now(), title:futureForm.title.trim(), targetAmount:numberValue(futureForm.targetAmount), savedAmount:numberValue(futureForm.savedAmount), deadline:futureForm.deadline || "", category:futureForm.category || "Life Goal", note:futureForm.note || "" };
+    setFutureGoals(prev => futureForm.id ? (Array.isArray(prev) ? prev : []).map(g => g.id === futureForm.id ? goal : g) : [goal, ...(Array.isArray(prev) ? prev : [])]);
+    resetFutureForm();
+  };
+
+  const deletePurchaseGoal = (id) => {
+    setPurchaseGoals(prev => (Array.isArray(prev) ? prev : []).filter(goal => goal.id !== id));
+    if (purchaseForm.id === id) resetPurchaseForm();
+  };
+
+  const deleteFutureGoal = (id) => {
+    setFutureGoals(prev => (Array.isArray(prev) ? prev : []).filter(goal => goal.id !== id));
+    if (futureForm.id === id) resetFutureForm();
+  };
+
+  const goalLabel = (entry) => {
+    if (entry.linkType === "itsinda" || String(entry.category || "").toLowerCase().includes("itsinda")) return "ITSINDA weekly saving";
+    if (entry.linkType === "purchase") return safePurchases.find(goal => goal.id === entry.linkedId)?.title || "Planned purchase";
+    if (entry.linkType === "future") return safeFutureGoals.find(goal => goal.id === entry.linkedId)?.title || "Future goal";
+    return "No goal link";
+  };
+
+  const SmallProgress = ({ value, color }) => (
+    <div style={{ height:7, borderRadius:999, background:C.elevated, overflow:"hidden", marginTop:8 }}>
+      <div style={{ width:`${Math.max(0, Math.min(100, Number(value) || 0))}%`, height:"100%", background:color, borderRadius:999 }} />
+    </div>
+  );
+
+  const MoneyMiniCard = ({ label, value, color, sub }) => (
+    <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:10, padding:12 }}>
+      <div style={{ color:C.creamSoft, fontSize:10, letterSpacing:1.2, textTransform:"uppercase" }}>{label}</div>
+      <div style={{ color, fontWeight:900, fontSize:18, marginTop:4 }}>{value}</div>
+      {sub && <div style={{ color:C.muted, fontSize:11, marginTop:2 }}>{sub}</div>}
+    </div>
+  );
+
+  const moneyCards = [
+    { l:"Today Income", v:rwf(moneyStats.todayIncome), c:C.green },
+    { l:"Today Expense", v:rwf(moneyStats.todayExpense), c:C.red },
+    { l:"Today Net", v:rwf(moneyStats.todayNet), c:moneyStats.todayNet >= 0 ? C.green : C.red },
+    { l:"Weekly Savings", v:rwf(moneyStats.weeklySavings), c:C.gold },
+    { l:"Monthly Savings", v:rwf(moneyStats.monthlySavings), c:C.blue },
+    { l:"ITSINDA", v:moneyStats.itsindaPaid ? "Paid" : "Pending", c:moneyStats.itsindaPaid ? C.green : C.orange },
+    { l:"Purchase Goals", v:`${moneyStats.purchaseProgress}%`, c:C.gold },
+    { l:"Future Goals", v:`${moneyStats.futureProgress}%`, c:C.blue },
+  ];
+
+  const GoalRow = ({ goal, type }) => {
+    const color = type === "purchase" ? C.gold : C.blue;
+    const pct = moneyProgress(goal.savedAmount, goal.targetAmount);
+    return (
+      <div style={{ border:"1px solid "+C.border, borderLeft:"4px solid "+color, borderRadius:10, padding:10, background:C.surface }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"flex-start" }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ color:C.cream, fontWeight:900, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{goal.title}</div>
+            <div style={{ color:C.muted, fontSize:11, marginTop:3 }}>{type === "purchase" ? goal.priority || "Normal" : goal.category || "Life Goal"}{goal.deadline ? " · " + goal.deadline : ""}</div>
+          </div>
+          <Badge color={color}>{pct}%</Badge>
+        </div>
+        <SmallProgress value={pct} color={color} />
+        <div style={{ color:C.creamSoft, fontSize:11, marginTop:6 }}>{rwf(goal.savedAmount)} saved / {rwf(goal.targetAmount)} target</div>
+        {goal.note && <div style={{ color:C.muted, fontSize:11, marginTop:4 }}>{goal.note}</div>}
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:8 }}>
+          <Btn small ghost onClick={() => {
+            if (type === "purchase") setPurchaseForm({ ...goal, targetAmount:String(goal.targetAmount || ""), savedAmount:String(goal.savedAmount || "") });
+            else setFutureForm({ ...goal, targetAmount:String(goal.targetAmount || ""), savedAmount:String(goal.savedAmount || "") });
+          }}>Edit</Btn>
+          <Btn small ghost onClick={() => {
+            setMoneyMode("ledger");
+            setShowMoreMoney(true);
+            setMoneyForm({ id:"", date:todayKey, type:"savings", amount:"", category:type === "purchase" ? "Purchase saving" : "Future goal saving", note:`Saving for ${goal.title}`, linkType:type, linkedId:goal.id });
+          }}>Add Saving</Btn>
+          <Btn small ghost style={{ color:C.red, borderColor:C.red }} onClick={() => type === "purchase" ? deletePurchaseGoal(goal.id) : deleteFutureGoal(goal.id)}>Delete</Btn>
+        </div>
+      </div>
+    );
+  };
+
+  const recentEntries = safeEntries.slice(0, showMoreMoney ? 12 : 5);
+
+  return (
+    <div style={{ ...PNL, minWidth:0, borderLeft:"5px solid "+C.gold, marginBottom:16 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) auto", gap:12, alignItems:"start", marginBottom:14 }}>
+        <div>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>MONEY & SAVINGS / FINANCIAL HEALTH</div>
+          <h2 style={{ margin:"4px 0 5px", color:C.cream, fontSize:22 }}>Financial Health</h2>
+          <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5 }}>Income, expenses, ITSINDA, planned purchases, and future goals are now connected. Savings can update a specific goal automatically.</div>
+        </div>
+        <Btn small orange onClick={() => setShowMoreMoney(v => !v)}>{showMoreMoney ? "Collapse Money" : "Open Money Tools"}</Btn>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginBottom:14 }}>
+        {moneyCards.map(x => (
+          <div key={x.l} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}>
+            <div style={{ color:x.c, fontWeight:900, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{x.v}</div>
+            <div style={{ color:C.creamSoft, fontSize:11, marginTop:4 }}>{x.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {showMoreMoney && (
+        <>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+            {[
+              ["overview", "Overview"], ["ledger", "Daily Ledger"], ["purchases", "Planned Purchases"], ["future", "Future Goals"], ["itsinda", "ITSINDA"]
+            ].map(([key, label]) => <Btn key={key} small orange={moneyMode === key} ghost={moneyMode !== key} onClick={() => setMoneyMode(key)}>{label}</Btn>)}
+          </div>
+
+          {(moneyMode === "overview" || moneyMode === "ledger") && (
+            <div style={{ display:"grid", gridTemplateColumns:"minmax(280px, 380px) minmax(0, 1fr)", gap:12, alignItems:"start", marginBottom:12 }}>
+              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}>
+                <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>{moneyForm.id ? "EDIT MONEY ENTRY" : "ADD MONEY ENTRY"}</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  <Input label="DATE" type="date" value={moneyForm.date} onChange={e => setMoneyForm(f => ({ ...f, date:e.target.value }))} />
+                  <Select label="TYPE" options={["income", "expense", "savings"]} value={moneyForm.type} onChange={e => setMoneyForm(f => ({ ...f, type:e.target.value, linkType:e.target.value === "savings" ? f.linkType : "none", linkedId:e.target.value === "savings" ? f.linkedId : "" }))} />
+                </div>
+                <Input label="AMOUNT" type="number" value={moneyForm.amount} onChange={e => setMoneyForm(f => ({ ...f, amount:e.target.value }))} placeholder="Example: 20000" />
+                <Input label="CATEGORY" value={moneyForm.category} onChange={e => setMoneyForm(f => ({ ...f, category:e.target.value }))} placeholder="Transport, client payment, food, ITSINDA..." />
+                {moneyForm.type === "savings" && (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                    <Select label="RELATIONSHIP" options={["none", "itsinda", "purchase", "future"]} value={moneyForm.linkType} onChange={e => setMoneyForm(f => ({ ...f, linkType:e.target.value, linkedId:"", category:e.target.value === "itsinda" ? "ITSINDA" : f.category }))} />
+                    <div style={{ marginBottom:12 }}>
+                      <label style={{ display:"block", fontSize:11, color:C.creamSoft, marginBottom:4, letterSpacing:1 }}>LINKED GOAL</label>
+                      <select disabled={moneyForm.linkType !== "purchase" && moneyForm.linkType !== "future"} value={moneyForm.linkedId} onChange={e => setMoneyForm(f => ({ ...f, linkedId:e.target.value }))} style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:13, outline:"none", boxSizing:"border-box" }}>
+                        <option value="">{moneyForm.linkType === "purchase" ? "Choose purchase goal" : moneyForm.linkType === "future" ? "Choose future goal" : "No goal needed"}</option>
+                        {(moneyForm.linkType === "purchase" ? safePurchases : moneyForm.linkType === "future" ? safeFutureGoals : []).map(goal => <option key={goal.id} value={goal.id}>{goal.title}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+                <Textarea label="NOTE" value={moneyForm.note} onChange={e => setMoneyForm(f => ({ ...f, note:e.target.value }))} placeholder="What happened?" rows={2} />
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  <Btn orange onClick={saveMoneyEntry}>{moneyForm.id ? "Save Changes" : "Add Entry"}</Btn>
+                  <Btn ghost onClick={markItsindaPaid}>Mark ITSINDA Paid</Btn>
+                  {moneyForm.id && <Btn ghost onClick={resetMoneyForm}>Cancel Edit</Btn>}
+                </div>
+              </div>
+
+              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12, minWidth:0 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", marginBottom:8 }}>
+                  <div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>RECENT MONEY ENTRIES</div>
+                  <Badge color={C.creamSoft}>{safeEntries.length}</Badge>
+                </div>
+                {!recentEntries.length ? <div style={{ color:C.muted, textAlign:"center", padding:18 }}>No money entry yet.</div> : recentEntries.map(entry => (
+                  <div key={entry.id} style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center", padding:"9px 10px", borderRadius:10, border:"1px solid "+C.border, background:C.surface, marginBottom:7 }}>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+                        <Badge color={entry.type === "income" ? C.green : entry.type === "expense" ? C.red : C.gold}>{entry.type}</Badge>
+                        <b style={{ color:entry.type === "expense" ? C.red : entry.type === "income" ? C.green : C.gold }}>{rwf(entry.amount)}</b>
+                        <span style={{ color:C.muted, fontSize:11 }}>{entry.date}</span>
+                      </div>
+                      <div style={{ color:C.creamSoft, fontSize:12, marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{entry.category || "No category"} · {goalLabel(entry)}</div>
+                      {entry.note && <div style={{ color:C.muted, fontSize:11, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{entry.note}</div>}
+                    </div>
+                    <div style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                      <Btn small ghost onClick={() => editMoneyEntry(entry)}>Edit</Btn>
+                      <Btn small ghost style={{ color:C.red, borderColor:C.red }} onClick={() => deleteMoneyEntry(entry)}>Delete</Btn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(moneyMode === "overview" || moneyMode === "purchases") && (
+            <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12, marginBottom:12 }}>
+              <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>PLANNED PURCHASES</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:10, marginBottom:12 }}>
+                {safePurchases.map(goal => <GoalRow key={goal.id} goal={goal} type="purchase" />)}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:8, alignItems:"end" }}>
+                <Input label={purchaseForm.id ? "EDIT PURCHASE" : "NEW PURCHASE"} value={purchaseForm.title} onChange={e => setPurchaseForm(f => ({ ...f, title:e.target.value }))} placeholder="Laptop, camera, tablet..." />
+                <Input label="TARGET" type="number" value={purchaseForm.targetAmount} onChange={e => setPurchaseForm(f => ({ ...f, targetAmount:e.target.value }))} />
+                <Input label="SAVED" type="number" value={purchaseForm.savedAmount} onChange={e => setPurchaseForm(f => ({ ...f, savedAmount:e.target.value }))} />
+                <Select label="PRIORITY" options={["High", "Normal", "Low"]} value={purchaseForm.priority} onChange={e => setPurchaseForm(f => ({ ...f, priority:e.target.value }))} />
+                <Input label="DEADLINE" type="date" value={purchaseForm.deadline} onChange={e => setPurchaseForm(f => ({ ...f, deadline:e.target.value }))} />
+              </div>
+              <Textarea label="NOTE" value={purchaseForm.note} onChange={e => setPurchaseForm(f => ({ ...f, note:e.target.value }))} rows={2} />
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn small orange onClick={savePurchaseGoal}>{purchaseForm.id ? "Save Purchase" : "Add Purchase"}</Btn>{purchaseForm.id && <Btn small ghost onClick={resetPurchaseForm}>Cancel Edit</Btn>}</div>
+            </div>
+          )}
+
+          {(moneyMode === "overview" || moneyMode === "future") && (
+            <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12, marginBottom:12 }}>
+              <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>FUTURE GOALS</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:10, marginBottom:12 }}>
+                {safeFutureGoals.map(goal => <GoalRow key={goal.id} goal={goal} type="future" />)}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:8, alignItems:"end" }}>
+                <Input label={futureForm.id ? "EDIT FUTURE GOAL" : "NEW FUTURE GOAL"} value={futureForm.title} onChange={e => setFutureForm(f => ({ ...f, title:e.target.value }))} placeholder="Buy land, studio, car..." />
+                <Input label="TARGET" type="number" value={futureForm.targetAmount} onChange={e => setFutureForm(f => ({ ...f, targetAmount:e.target.value }))} />
+                <Input label="SAVED" type="number" value={futureForm.savedAmount} onChange={e => setFutureForm(f => ({ ...f, savedAmount:e.target.value }))} />
+                <Input label="CATEGORY" value={futureForm.category} onChange={e => setFutureForm(f => ({ ...f, category:e.target.value }))} placeholder="Life Goal / Business Goal" />
+                <Input label="DEADLINE" type="date" value={futureForm.deadline} onChange={e => setFutureForm(f => ({ ...f, deadline:e.target.value }))} />
+              </div>
+              <Textarea label="NOTE" value={futureForm.note} onChange={e => setFutureForm(f => ({ ...f, note:e.target.value }))} rows={2} />
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn small orange onClick={saveFutureGoal}>{futureForm.id ? "Save Future Goal" : "Add Future Goal"}</Btn>{futureForm.id && <Btn small ghost onClick={resetFutureForm}>Cancel Edit</Btn>}</div>
+            </div>
+          )}
+
+          {moneyMode === "itsinda" && (
+            <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:14, marginBottom:12 }}>
+              <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>ITSINDA WEEKLY SAVINGS</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:10, marginBottom:12 }}>
+                <MoneyMiniCard label="Weekly Target" value={rwf(ITSINDA_WEEKLY_AMOUNT)} color={C.gold} sub="Every Friday" />
+                <MoneyMiniCard label="This Week Paid" value={rwf(moneyStats.itsindaThisWeek)} color={moneyStats.itsindaPaid ? C.green : C.orange} sub={moneyStats.itsindaPaid ? "Complete" : "Pending"} />
+                <MoneyMiniCard label="Week Range" value={week.start} color={C.blue} sub={week.end} />
+              </div>
+              <Btn orange onClick={markItsindaPaid}>Mark This Week ITSINDA Paid</Btn>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ListView({ tasks, activeSpace, selected, setSelected, onUpdate, settings }) {
+  const ordered = useMemo(() => sortTasksSmart(tasks), [tasks]);
+  const doneCount = useMemo(() => tasks.filter(t => t.status === "Done").length, [tasks]);
   const lateCount = useMemo(() => tasks.filter(isLateTask).length, [tasks]);
-  const collapsed = completedVisibility === "collapsed" && shouldShowDone;
-  const shouldSplitMopas = activeSpace === "mopas" && ordered.length > 0 && ordered.every(t => t.space === "mopas");
-  const tenderWork = shouldSplitMopas ? ordered.filter(isMopasTenderWork) : [];
-  const normalMopasTasks = shouldSplitMopas ? ordered.filter(isMopasNormalTask) : [];
+  const [collapsedSections, setCollapsedSections] = useState(() => readStore(TASK_CATEGORY_COLLAPSE_KEY, {}));
+
+  useEffect(() => { writeStore(TASK_CATEGORY_COLLAPSE_KEY, collapsedSections); }, [collapsedSections]);
+
+  const taskSections = useMemo(() => {
+    const late = sortTasksSmart(ordered.filter(t => t.status !== "Done" && isLateTask(t)));
+    const inProgress = sortTasksSmart(ordered.filter(t => t.status === "In Progress" && !isLateTask(t)));
+    const active = sortTasksSmart(ordered.filter(t => t.status !== "Done" && t.status !== "In Progress" && !isLateTask(t) && isDateKey(t.due)));
+    const undone = sortTasksSmart(ordered.filter(t => t.status !== "Done" && t.status !== "In Progress" && !isLateTask(t) && !isDateKey(t.due)));
+    const completed = sortTasksSmart(ordered.filter(t => t.status === "Done"));
+    return [
+      { key:"active", title:"ACTIVE TASKS", subtitle:"Open tasks with a deadline today or in the future.", items:active, color:C.blue, empty:"No active deadline task." },
+      { key:"progress", title:"IN PROGRESS", subtitle:"Started tasks that are not late yet.", items:inProgress, color:C.orange, empty:"No task in progress." },
+      { key:"late", title:"LATE TASKS", subtitle:"Deadline passed and the task is not done.", items:late, color:C.red, empty:"No late task." },
+      { key:"undone", title:"UNDONE TASKS", subtitle:"Open tasks without a deadline.", items:undone, color:C.gold, empty:"No undone task without deadline." },
+      { key:"done", title:"DONE TASKS", subtitle:"Completed tasks are always visible, locked, and at the bottom.", items:completed, color:C.green, empty:"No completed task yet." },
+    ];
+  }, [ordered]);
+
   const dueLabel = (t) => {
     if (!isDateKey(t.due)) return { label:"No deadline", color:C.muted };
     const late = taskLateInfo(t);
@@ -2043,23 +2825,28 @@ function ListView({ tasks, activeSpace, selected, setSelected, onUpdate, setting
     if (diff === 1) return { label:"Tomorrow", color:C.blue };
     return { label:t.due, color:C.creamSoft };
   };
+
+  const toggleSection = (key) => setCollapsedSections(prev => ({ ...(prev || {}), [key]:!prev?.[key] }));
+  const collapseAll = () => setCollapsedSections(taskSections.reduce((acc, section) => ({ ...acc, [section.key]:true }), {}));
+  const expandAll = () => setCollapsedSections({});
+
   const renderTaskRow = (t) => {
     const due = dueLabel(t);
     const done = t.status === "Done";
     const late = taskLateInfo(t);
     const mopasType = t.space === "mopas" ? getMopasTaskType(t) : "";
     return (
-      <div key={t.id} onClick={() => setSelected(t)} style={{ display:"grid", gridTemplateColumns:"auto minmax(0,1fr) auto", alignItems:"center", gap:12, padding:done && collapsed ? "7px 10px" : "10px 12px", borderRadius:8, marginBottom:6, cursor:"pointer", background: selected && selected.id === t.id ? C.elevated : late.isLate ? C.red+"10" : C.bg, border:"1px solid "+(selected && selected.id === t.id ? C.orange : done ? C.green : late.isLate ? C.red : C.border), borderLeft:"4px solid "+(done ? C.green : late.isLate ? C.red : mopasType === "Tender Working On" ? C.gold : due.color), opacity:done ? .58 : 1 }}>
+      <div key={t.id} onClick={() => setSelected(t)} style={{ display:"grid", gridTemplateColumns:"auto minmax(0,1fr) auto", alignItems:"center", gap:12, padding:"10px 12px", borderRadius:8, marginBottom:6, cursor:"pointer", background: selected && selected.id === t.id ? C.elevated : late.isLate ? C.red+"10" : C.bg, border:"1px solid "+(selected && selected.id === t.id ? C.orange : done ? C.green : late.isLate ? C.red : C.border), borderLeft:"4px solid "+(done ? C.green : late.isLate ? C.red : mopasType === "Tender Working On" ? C.gold : due.color), opacity:done ? .58 : 1 }}>
         <span style={{ fontSize:14, width:24 }}>{done ? "✓" : late.isLate ? "◬" : t.status === "In Progress" ? "↻" : t.status === "Blocked" ? "Blocked" : "⫸"}</span>
         <div style={{ minWidth:0 }}>
-          <div style={{ fontWeight:700, color:done ? C.muted : late.isLate ? C.red : C.cream, fontSize:done && collapsed ? 12 : 14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", textDecoration:done ? "line-through" : "none" }}>{t.title}</div>
-          {!done || !collapsed ? <div style={{ fontSize:11, color:C.muted, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{(t.folder || "General")+" / "+(t.list || "Tasks")}{t.time ? " · " + t.time : ""}</div> : null}
+          <div style={{ fontWeight:700, color:done ? C.muted : late.isLate ? C.red : C.cream, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", textDecoration:done ? "line-through" : "none" }}>{t.title}</div>
+          <div style={{ fontSize:11, color:C.muted, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{(t.folder || "General")+" / "+(t.list || "Tasks")}{t.time ? " · " + t.time : ""}</div>
           <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:5 }}>
             {mopasType && <Badge color={mopasType === "Tender Working On" ? C.gold : C.blue}>{mopasType}</Badge>}
             <Badge color={statusColor(t.status)}>{done ? "Completed" : t.status}</Badge>
             <Badge color={priorityColor(t.priority)}>{t.priority}</Badge>
             <Badge color={due.color}>{due.label}</Badge>
-            {late.isLate && <Badge color={C.red}>Late · moved down</Badge>}
+            {late.isLate && <Badge color={C.red}>Late · separated</Badge>}
             {done && <Badge color={C.green}>Locked</Badge>}
             {mopasType === "Tender Working On" && t.tenderStage && <Badge color={C.blue}>{t.tenderStage}</Badge>}
           </div>
@@ -2074,52 +2861,52 @@ function ListView({ tasks, activeSpace, selected, setSelected, onUpdate, setting
       </div>
     );
   };
-  const renderSection = (title, subtitle, items, color, emptyText) => (
-    <div style={{ marginTop: shouldSplitMopas ? 14 : 0 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:8, padding:"10px 12px", background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+color, borderRadius:10 }}>
-        <div>
-          <div style={{ color, fontSize:12, letterSpacing:2, fontWeight:900 }}>{title}</div>
-          <div style={{ color:C.creamSoft, fontSize:12, marginTop:2 }}>{subtitle}</div>
+
+  const renderSection = (section) => {
+    const isCollapsed = !!collapsedSections?.[section.key];
+    return (
+      <div style={{ marginTop:0 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:isCollapsed ? 0 : 8, padding:"10px 12px", background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+section.color, borderRadius:10 }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ color:section.color, fontSize:12, letterSpacing:2, fontWeight:900 }}>{section.title}</div>
+            <div style={{ color:C.creamSoft, fontSize:12, marginTop:2 }}>{section.subtitle}</div>
+          </div>
+          <div style={{ display:"flex", gap:7, alignItems:"center", flexWrap:"wrap" }}>
+            <Badge color={section.color}>{section.items.length}</Badge>
+            <Btn small ghost onClick={() => toggleSection(section.key)}>{isCollapsed ? "Expand" : "Collapse"}</Btn>
+          </div>
         </div>
-        <Badge color={color}>{items.length}</Badge>
+        {!isCollapsed && (!section.items.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:18, background:C.bg, border:"1px dashed "+C.border, borderRadius:10, marginBottom:10 }}>{section.empty}</div> : section.items.map(renderTaskRow))}
       </div>
-      {!items.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:18, background:C.bg, border:"1px dashed "+C.border, borderRadius:10, marginBottom:10 }}>{emptyText}</div> : items.map(renderTaskRow)}
-    </div>
-  );
+    );
+  };
+
   return (
     <div style={PNL}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:12 }}>
         <div>
-          <div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>{shouldSplitMopas ? "MOPAS OPERATIONS SPLIT" : "TASK LIST"}</div>
-          <div style={{ color:C.creamSoft, fontSize:12 }}>{shouldSplitMopas ? "Active tender packages are separated from normal MOPAS daily tasks." : lateCount ? `${lateCount} late task${lateCount === 1 ? "" : "s"} moved lower and marked red` : "No late tasks"}</div>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>TASK CATEGORIES</div>
+          <div style={{ color:C.creamSoft, fontSize:12 }}>{lateCount ? `${lateCount} late task${lateCount === 1 ? "" : "s"} marked red and separated` : "Done tasks are always visible at the bottom"}</div>
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-          {shouldSplitMopas && (
-            <>
-              <Badge color={C.gold}>{tenderWork.length} tender working on</Badge>
-              <Badge color={C.blue}>{normalMopasTasks.length} normal task{normalMopasTasks.length === 1 ? "" : "s"}</Badge>
-            </>
-          )}
-          <Badge color={C.green}>{hiddenDoneCount} done</Badge>
-          <Btn small ghost onClick={() => setShowDoneTasks(v => !v)}>{shouldShowDone ? "Hide done tasks" : "Show done tasks"}</Btn>
+          <Badge color={C.green}>{doneCount} done</Badge>
+          <Btn small ghost onClick={collapseAll}>Collapse All</Btn>
+          <Btn small ghost onClick={expandAll}>Expand All</Btn>
         </div>
       </div>
       {!ordered.length ? (
         <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:24, background:C.bg, border:"1px dashed "+C.border, borderRadius:10 }}>No task found with the current filters.</div>
-      ) : shouldSplitMopas ? (
-        <>
-          {renderSection("TENDERS WORKING ON", "Real tender packages you are preparing/submitting.", tenderWork, C.gold, "No active tender package yet. Create a new task and choose MOPAS Task Type → Tender Working On.")}
-          {renderSection("NORMAL MOPAS TASKS", "Daily operations like Search and log new tenders, follow-ups, reports, calls, and document organization.", normalMopasTasks, C.blue, "No normal MOPAS task found.")}
-        </>
-      ) : ordered.map(renderTaskRow)}
+      ) : (
+        <div style={{ display:"grid", gap:12 }}>
+          {taskSections.map(renderSection)}
+        </div>
+      )}
     </div>
   );
 }
 
-function BoardView({ tasks, selected, setSelected, onUpdate, settings, showDoneTasks, setShowDoneTasks }) {
-  const completedVisibility = settings?.tasks?.completedVisibility || "hide";
-  const shouldShowDone = completedVisibility !== "hide" || showDoneTasks;
-  const orderedTasks = useMemo(() => sortTasksSmart(tasks).filter(t => shouldShowDone || t.status !== "Done"), [tasks, shouldShowDone]);
+function BoardView({ tasks, selected, setSelected, onUpdate, settings }) {
+  const orderedTasks = useMemo(() => sortTasksSmart(tasks), [tasks]);
   const nextStatus = (current, direction) => {
     const idx = STATUSES.indexOf(current);
     const next = Math.max(0, Math.min(STATUSES.length - 1, idx + direction));
@@ -2133,8 +2920,7 @@ function BoardView({ tasks, selected, setSelected, onUpdate, settings, showDoneT
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:12 }}>
-        <div style={{ color:C.creamSoft, fontSize:12 }}>Done tasks are hidden by default. Use this button when you want to review completed work.</div>
-        <Btn small ghost onClick={() => setShowDoneTasks(v => !v)}>{shouldShowDone ? "Hide done tasks" : "Show done tasks"}</Btn>
+        <div style={{ color:C.creamSoft, fontSize:12 }}>Done tasks stay visible in the Done column and remain locked until reopened.</div>
       </div>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:12 }}>
       {STATUSES.map(st => {
@@ -2479,10 +3265,52 @@ function GoalsView({ activeSpace }) {
 }
 
 function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup, resetSettingsOnly, clearTestData, sendTodayDisciplineEmail, emailNotice }) {
-  const tabs = ["General", "Daily Routine", "Tasks & Deadlines", "MOPAS Tender", "Documents", "Backup & Data", "Appearance", "Notifications"];
+  const tabs = ["General", "Daily Routine", "Tasks & Deadlines", "Command Center", "MOPAS Tender", "Documents", "Backup & Data", "Appearance", "Notifications"];
   const [tab, setTab] = useState("General");
   const merged = mergeAppSettings(settings);
   const update = (section, key, value) => setSettings(prev => mergeAppSettings({ ...prev, [section]:{ ...(prev?.[section] || {}), [key]:value } }));
+  const updateCommandSection = (key, value) => setSettings(prev => {
+    const current = mergeAppSettings(prev || {});
+    return mergeAppSettings({
+      ...current,
+      commandCenter:{
+        ...current.commandCenter,
+        sections:{ ...(current.commandCenter?.sections || {}), [key]:value },
+      },
+    });
+  });
+  const moveCommandSection = (key, direction) => setSettings(prev => {
+    const current = mergeAppSettings(prev || {});
+    const order = [...(current.commandCenter?.sectionOrder || DEFAULT_COMMAND_CENTER_ORDER)];
+    const index = order.indexOf(key);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return current;
+    [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+    return mergeAppSettings({ ...current, commandCenter:{ ...current.commandCenter, sectionOrder:order } });
+  });
+  const resetCommandCenter = () => setSettings(prev => {
+    const current = mergeAppSettings(prev || {});
+    return mergeAppSettings({ ...current, commandCenter:{ ...DEFAULT_APP_SETTINGS.commandCenter, professionalCalendarPinned:true } });
+  });
+  const updateAllCommandSections = (visible) => setSettings(prev => {
+    const current = mergeAppSettings(prev || {});
+    const sections = DEFAULT_COMMAND_CENTER_ORDER.reduce((acc, key) => ({ ...acc, [key]:visible }), {});
+    sections.miniCalendar = true;
+    return mergeAppSettings({ ...current, commandCenter:{ ...current.commandCenter, sections } });
+  });
+  const applyCommandPreset = (preset) => setSettings(prev => {
+    const current = mergeAppSettings(prev || {});
+    const presets = {
+      focus:["coach", "stats", "miniCalendar", "taskCategories", "todayFocus", "lateTasks"],
+      mopas:["coach", "stats", "miniCalendar", "mopasAlerts", "documentAlerts", "taskCategories", "lateTasks", "todayFocus"],
+      money:["coach", "stats", "miniCalendar", "taskCategories", "goalProgress", "weeklyProgress"],
+      full:DEFAULT_COMMAND_CENTER_ORDER,
+    };
+    const order = presets[preset] || DEFAULT_COMMAND_CENTER_ORDER;
+    const sections = DEFAULT_COMMAND_CENTER_ORDER.reduce((acc, key) => ({ ...acc, [key]:order.includes(key) }), {});
+    sections.miniCalendar = true;
+    return mergeAppSettings({ ...current, commandCenter:{ ...current.commandCenter, sectionOrder:[...order, ...DEFAULT_COMMAND_CENTER_ORDER.filter(k => !order.includes(k))], sections, visibleCount:preset === "full" ? 12 : 8 } });
+  });
   const storageSize = useMemo(() => {
     try {
       let total = 0;
@@ -2549,16 +3377,65 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
         <Toggle label="Enable automatic routine tasks" checked={merged.routine.autoRoutineTasks} onChange={v => update("routine", "autoRoutineTasks", v)} />
       </SettingCard>}
 
-      {tab === "Tasks & Deadlines" && <SettingCard title="TASKS & DEADLINES" note="Completed tasks stay safe at the bottom and can be hidden, shown, or collapsed.">
+      {tab === "Tasks & Deadlines" && <SettingCard title="TASKS & DEADLINES" note="Completed tasks stay safe, visible, locked, and at the bottom. You can only collapse their display size.">
         <FieldGrid>
           <Select label="DEFAULT TASK PRIORITY" options={PRIORITIES} value={merged.tasks.defaultPriority} onChange={e => update("tasks", "defaultPriority", e.target.value)} />
           <Select label="AUTO-MOVE UNFINISHED TASKS" options={["ask first", "move automatically", "never"]} value={merged.tasks.autoMoveUnfinished} onChange={e => update("tasks", "autoMoveUnfinished", e.target.value)} />
-          <Select label="COMPLETED TASK VISIBILITY" options={["hide", "show", "collapsed"]} value={merged.tasks.completedVisibility} onChange={e => update("tasks", "completedVisibility", e.target.value)} />
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:12 }}>
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:1, marginBottom:4 }}>DONE TASKS</div>
+            <div style={{ color:C.cream, fontSize:13, fontWeight:800 }}>Always visible · locked · bottom of the list</div>
+            <div style={{ color:C.creamSoft, fontSize:11, marginTop:4 }}>Hide option removed. Use Reopen if a completed task needs work again.</div>
+          </div>
           <Select label="LATE TASK BEHAVIOR" options={["move late down", "keep overdue", "move to today", "ask first"]} value={merged.tasks.overdueBehavior} onChange={e => update("tasks", "overdueBehavior", e.target.value)} />
           <Select label="WEEK START DAY" options={["Sunday", "Monday"]} value={merged.tasks.weekStartDay} onChange={e => update("tasks", "weekStartDay", e.target.value)} />
           <Input label="DEFAULT REMINDER DAYS" type="number" value={merged.tasks.defaultReminderDays} onChange={e => update("tasks", "defaultReminderDays", Number(e.target.value || 0))} />
         </FieldGrid>
         <Toggle label="Allow completed tasks inside Today Focus" checked={merged.tasks.showCompletedInFocus} onChange={v => update("tasks", "showCompletedInFocus", v)} />
+      </SettingCard>}
+
+      {tab === "Command Center" && <SettingCard title="COMMAND CENTER" note="Build your own dashboard: keep Calendar visible, choose sections, arrange order, and control how much appears before Show More. Financial Health is managed inside Money & Savings.">
+        <FieldGrid>
+          <Input label="SECTIONS BEFORE SHOW MORE" type="number" value={merged.commandCenter.visibleCount || 8} onChange={e => update("commandCenter", "visibleCount", Number(e.target.value || 1))} />
+          <Select label="COMMAND CENTER LAYOUT" options={["compact", "balanced", "wide"]} value={merged.commandCenter.layout || "balanced"} onChange={e => update("commandCenter", "layout", e.target.value)} />
+          <Select label="CARD DENSITY" options={["compact", "comfortable"]} value={merged.commandCenter.density || "comfortable"} onChange={e => update("commandCenter", "density", e.target.value)} />
+        </FieldGrid>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:10, marginTop:8 }}>
+          <Toggle label="Show section numbers" checked={merged.commandCenter.showSectionNumbers !== false} onChange={v => update("commandCenter", "showSectionNumbers", v)} />
+          <Toggle label="Show Command Center status bar" checked={merged.commandCenter.showStatusBar !== false} onChange={v => update("commandCenter", "showStatusBar", v)} />
+          <Toggle label="Start dashboard expanded" checked={merged.commandCenter.defaultExpanded === true} onChange={v => update("commandCenter", "defaultExpanded", v)} />
+        </div>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:14, margin:"12px 0", color:C.creamSoft, fontSize:12, lineHeight:1.55 }}>
+          <strong style={{ color:C.gold }}>Calendar is protected:</strong> the full Calendar tab stays in every workspace and the dashboard Calendar card is kept visible by default. TODAY DISCIPLINE PLAN stays above everything and is not hidden.
+        </div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+          <Btn small orange onClick={() => applyCommandPreset("focus")}>Focus Preset</Btn>
+          <Btn small ghost onClick={() => applyCommandPreset("mopas")}>MOPAS Preset</Btn>
+          <Btn small ghost onClick={() => applyCommandPreset("money")}>Money Preset</Btn>
+          <Btn small ghost onClick={() => applyCommandPreset("full")}>Full Dashboard</Btn>
+          <Btn small ghost onClick={() => updateAllCommandSections(true)}>Show All</Btn>
+          <Btn small ghost onClick={() => updateAllCommandSections(false)}>Hide Optional</Btn>
+          <Btn small ghost onClick={resetCommandCenter}>Reset Professional Layout</Btn>
+        </div>
+        <div style={{ display:"grid", gap:8 }}>
+          {(merged.commandCenter.sectionOrder || DEFAULT_COMMAND_CENTER_ORDER).map((key, index) => {
+            const info = COMMAND_CENTER_SECTIONS.find(item => item.key === key) || { key, label:key, group:"Custom" };
+            const isCalendar = key === "miniCalendar";
+            return (
+              <div key={key} style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) auto auto auto", gap:8, alignItems:"center", background:C.bg, border:"1px solid "+(isCalendar ? C.gold : C.border), borderLeft:"4px solid "+(isCalendar ? C.gold : C.border), borderRadius:12, padding:10 }}>
+                <label style={{ display:"flex", alignItems:"center", gap:8, color:C.cream, fontSize:13, fontWeight:800, minWidth:0 }}>
+                  <input type="checkbox" disabled={isCalendar} checked={isCalendar ? true : merged.commandCenter.sections?.[key] !== false} onChange={e => updateCommandSection(key, e.target.checked)} />
+                  <span style={{ whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{index + 1}. {info.label}</span>
+                </label>
+                <Badge color={isCalendar ? C.gold : merged.commandCenter.sections?.[key] !== false ? C.green : C.muted}>{isCalendar ? "Protected" : merged.commandCenter.sections?.[key] !== false ? "Visible" : "Hidden"}</Badge>
+                <Badge color={C.blue}>{info.group || "Section"}</Badge>
+                <div style={{ display:"flex", gap:6, justifyContent:"flex-end", flexWrap:"wrap" }}>
+                  <Btn small ghost disabled={index === 0} onClick={() => moveCommandSection(key, -1)}>↑</Btn>
+                  <Btn small ghost disabled={index === (merged.commandCenter.sectionOrder || DEFAULT_COMMAND_CENTER_ORDER).length - 1} onClick={() => moveCommandSection(key, 1)}>↓</Btn>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </SettingCard>}
 
       {tab === "MOPAS Tender" && <SettingCard title="MOPAS TENDER" note="Tender preparation defaults for MOPAS tracking and dashboard urgency.">
@@ -2680,6 +3557,93 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
 }
 
 function DocumentsView({ activeSpace, settings }) {
+
+  const refreshCloudTasks = useCallback(async () => {
+    if (!getStoredAuthToken()) {
+      setBackendNotice({ type:"error", message:"Login first before syncing from backend." });
+      return;
+    }
+    setBackendBusy(true);
+    setBackendNotice({ type:"info", message:"Syncing tasks from MongoDB..." });
+    try {
+      const result = await afterglowApiRequest("/api/tasks?limit=500");
+      const cloudTasks = (result.data || []).map(taskFromApi);
+      setTasks(prev => ensureRoutineTasksForDate(mergeCloudTasks(prev, cloudTasks), localTodayISO()).map(normalizeTask));
+      setBackendNotice({ type:"success", message:`Synced ${cloudTasks.length} cloud task${cloudTasks.length === 1 ? "" : "s"}.` });
+    } catch (error) {
+      setBackendNotice({ type:"error", message:String(error?.message || error) });
+    } finally {
+      setBackendBusy(false);
+    }
+  }, []);
+
+  const handleBackendLogin = useCallback(async (payload) => {
+    setBackendBusy(true);
+    setBackendNotice({ type:"info", message:"Logging in to AFTERGLOW backend..." });
+    try {
+      const result = await afterglowApiRequest("/api/auth/login", { method:"POST", body:JSON.stringify(payload) });
+      setStoredAuth(result.token, result.user);
+      setAuth({ token:result.token, user:result.user });
+      setBackendNotice({ type:"success", message:"Backend connected. Loading cloud tasks..." });
+      const taskResult = await afterglowApiRequest("/api/tasks?limit=500");
+      const cloudTasks = (taskResult.data || []).map(taskFromApi);
+      setTasks(prev => ensureRoutineTasksForDate(mergeCloudTasks(prev, cloudTasks), localTodayISO()).map(normalizeTask));
+      setBackendNotice({ type:"success", message:`Connected as ${result.user?.name || "user"}. ${cloudTasks.length} cloud task${cloudTasks.length === 1 ? "" : "s"} loaded.` });
+    } catch (error) {
+      setBackendNotice({ type:"error", message:String(error?.message || error) });
+    } finally {
+      setBackendBusy(false);
+    }
+  }, []);
+
+  const handleBackendRegister = useCallback(async (payload) => {
+    setBackendBusy(true);
+    setBackendNotice({ type:"info", message:"Creating backend account..." });
+    try {
+      const result = await afterglowApiRequest("/api/auth/register", { method:"POST", body:JSON.stringify(payload) });
+      setStoredAuth(result.token, result.user);
+      setAuth({ token:result.token, user:result.user });
+      setBackendNotice({ type:"success", message:`Account created for ${result.user?.name || "user"}. Use Upload Local Tasks to move existing tasks to MongoDB.` });
+    } catch (error) {
+      setBackendNotice({ type:"error", message:String(error?.message || error) });
+    } finally {
+      setBackendBusy(false);
+    }
+  }, []);
+
+  const handleBackendLogout = useCallback(() => {
+    setStoredAuth("", null);
+    setAuth({ token:"", user:null });
+    setBackendNotice({ type:"info", message:"Logged out from backend. Local data remains available." });
+  }, []);
+
+  const uploadLocalTasksToCloud = useCallback(async () => {
+    if (!getStoredAuthToken()) {
+      setBackendNotice({ type:"error", message:"Login first before uploading local tasks." });
+      return;
+    }
+    const localOnly = tasks.map(normalizeTask).filter(task => !getTaskCloudId(task));
+    if (!localOnly.length) {
+      setBackendNotice({ type:"success", message:"All visible tasks already have cloud IDs." });
+      return;
+    }
+    setBackendBusy(true);
+    setBackendNotice({ type:"info", message:`Uploading ${localOnly.length} local task${localOnly.length === 1 ? "" : "s"} to MongoDB...` });
+    try {
+      const uploaded = [];
+      for (const task of localOnly) {
+        const result = await afterglowApiRequest("/api/tasks", { method:"POST", body:JSON.stringify(taskPayloadForApi(task)) });
+        if (result.data) uploaded.push(taskFromApi(result.data));
+      }
+      setTasks(prev => mergeCloudTasks(prev, uploaded));
+      setBackendNotice({ type:"success", message:`Uploaded ${uploaded.length} task${uploaded.length === 1 ? "" : "s"} to MongoDB.` });
+    } catch (error) {
+      setBackendNotice({ type:"error", message:String(error?.message || error) });
+    } finally {
+      setBackendBusy(false);
+    }
+  }, [tasks]);
+
   const sp = SPACES.find(s => s.id === activeSpace) || SPACES[0];
   const docSettings = mergeAppSettings(settings).documents;
   const configuredCategories = String(docSettings.categories || "Company, Tender, Staff, Contract, Finance").split(",").map(x => x.trim()).filter(Boolean);
@@ -3086,39 +4050,66 @@ function TenderFolderCreator() {
   );
 }
 
+
+function CloudSyncPanel({ auth, backendNotice, backendBusy, onLogin, onRegister, onLogout, onRefresh, onUploadLocal }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ name:"Samu", email:"ishimwesamuel3d@gmail.com", password:"" });
+  const isConnected = !!auth?.token;
+  const submitLogin = () => onLogin({ email:form.email.trim(), password:form.password });
+  const submitRegister = () => onRegister({ name:form.name.trim() || "Samu", email:form.email.trim(), password:form.password });
+  return (
+    <div style={{ position:"relative" }}>
+      <Btn ghost small onClick={() => setOpen(v => !v)} style={{ borderColor:isConnected ? C.green : C.border, color:isConnected ? C.green : C.cream }}>
+        {isConnected ? "Cloud Connected" : "Connect Backend"}
+      </Btn>
+      {open && (
+        <div style={{ position:"absolute", right:0, top:"calc(100% + 8px)", width:360, maxWidth:"86vw", background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:14, zIndex:40, boxShadow:"0 20px 60px #0009" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", marginBottom:10 }}>
+            <div>
+              <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:800 }}>BACKEND SYNC</div>
+              <div style={{ color:C.creamSoft, fontSize:12 }}>{API_BASE_URL}</div>
+            </div>
+            <Btn small ghost onClick={() => setOpen(false)}>Close</Btn>
+          </div>
+          {isConnected ? (
+            <>
+              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10, marginBottom:10 }}>
+                <div style={{ color:C.green, fontWeight:800, fontSize:13 }}>Signed in</div>
+                <div style={{ color:C.cream, fontSize:13, marginTop:4 }}>{auth?.user?.name || "AFTERGLOW user"}</div>
+                <div style={{ color:C.creamSoft, fontSize:12 }}>{auth?.user?.email || ""}</div>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                <Btn small orange disabled={backendBusy} onClick={onRefresh}>Sync From Cloud</Btn>
+                <Btn small disabled={backendBusy} onClick={onUploadLocal}>Upload Local Tasks</Btn>
+                <Btn small ghost onClick={onLogout} style={{ gridColumn:"1 / -1", color:C.red, borderColor:C.red }}>Logout</Btn>
+              </div>
+            </>
+          ) : (
+            <>
+              <Input label="NAME" value={form.name} onChange={e => setForm(f => ({ ...f, name:e.target.value }))} />
+              <Input label="EMAIL" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email:e.target.value }))} />
+              <Input label="PASSWORD" type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password:e.target.value }))} placeholder="Your backend password" />
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                <Btn small orange disabled={backendBusy || !form.email || !form.password} onClick={submitLogin}>Login</Btn>
+                <Btn small disabled={backendBusy || !form.email || !form.password} onClick={submitRegister}>Register</Btn>
+              </div>
+            </>
+          )}
+          {backendNotice && (
+            <div style={{ marginTop:10, background:backendNotice.type === "error" ? C.red+"18" : backendNotice.type === "success" ? C.green+"18" : C.blue+"18", border:"1px solid "+(backendNotice.type === "error" ? C.red : backendNotice.type === "success" ? C.green : C.blue), color:C.cream, borderRadius:10, padding:10, fontSize:12, lineHeight:1.4 }}>
+              {backendNotice.message}
+            </div>
+          )}
+          <div style={{ color:C.muted, fontSize:11, marginTop:10, lineHeight:1.4 }}>
+            Tip: keep backend running on port 5000. New tasks save to MongoDB when connected; localStorage stays as backup.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AfterglowApp() {
-  // ── AUTH ──────────────────────────────────────────────────────────────────
-  const [authReady, setAuthReady] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [authError, setAuthError] = useState("");
-  const [loginForm, setLoginForm] = useState({ email:"", password:"" });
-  const [loginLoading, setLoginLoading] = useState(false);
-
-  useEffect(() => {
-    const token = getToken();
-    setIsLoggedIn(!!token);
-    setAuthReady(true);
-  }, []);
-
-  const handleLogin = async () => {
-    setLoginLoading(true);
-    setAuthError("");
-    try {
-      await api.auth.login(loginForm.email, loginForm.password);
-      setIsLoggedIn(true);
-    } catch (err) {
-      setAuthError(err.message || "Login failed. Check your email and password.");
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    clearToken();
-    setIsLoggedIn(false);
-  };
-
-  // ── TASKS ─────────────────────────────────────────────────────────────────
   const [tasks, setTasks] = useState(() => {
     const stored = load();
     const base = (stored.length ? stored : SEEDS).map(normalizeTask);
@@ -3126,7 +4117,7 @@ function AfterglowApp() {
   });
   const [settings, setSettings] = useState(() => {
     const loaded = loadAppSettings();
-    const shouldMigrateDoneDefault = loaded.tasks?.doneDefaultMigrated !== true && loaded.tasks?.completedVisibility === "show";
+    const shouldMigrateDoneDefault = false;
     const migratedAppearance = {
       ...(loaded.appearance || {}),
       dashboardIcon: (!loaded.appearance?.dashboardIcon || loaded.appearance?.dashboardLabel === "Everything Dashboard") ? "▨" : loaded.appearance.dashboardIcon,
@@ -3137,7 +4128,7 @@ function AfterglowApp() {
       appearance:migratedAppearance,
       tasks:{
         ...loaded.tasks,
-        completedVisibility: shouldMigrateDoneDefault ? "hide" : loaded.tasks?.completedVisibility,
+        completedVisibility: "show",
         overdueBehavior: loaded.tasks?.overdueBehavior || "move late down",
         doneDefaultMigrated:true,
       }
@@ -3158,6 +4149,9 @@ function AfterglowApp() {
   const [showNewTask, setShowNewTask] = useState(false);
   const [showEndDayReview, setShowEndDayReview] = useState(false);
   const [emailNotice, setEmailNotice] = useState(null);
+  const [backendNotice, setBackendNotice] = useState(null);
+  const [backendBusy, setBackendBusy] = useState(false);
+  const [auth, setAuth] = useState(() => ({ token:getStoredAuthToken(), user:getStoredAuthUser() }));
   const [screenWidth, setScreenWidth] = useState(() => typeof window !== "undefined" ? window.innerWidth : 1366);
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" ? window.innerWidth >= 900 : true);
   const isCompactLayout = screenWidth < 1100;
@@ -3261,6 +4255,93 @@ function AfterglowApp() {
     return () => window.clearInterval(timer);
   }, [settings?.notifications?.emailNotifications, settings?.notifications?.todayDisciplineEmail, settings?.notifications?.todayDisciplineEmailTime, sendTodayDisciplineEmail]);
 
+
+  const refreshCloudTasks = useCallback(async () => {
+    if (!getStoredAuthToken()) {
+      setBackendNotice({ type:"error", message:"Login first before syncing from backend." });
+      return;
+    }
+    setBackendBusy(true);
+    setBackendNotice({ type:"info", message:"Syncing tasks from MongoDB..." });
+    try {
+      const result = await afterglowApiRequest("/api/tasks?limit=500");
+      const cloudTasks = (result.data || []).map(taskFromApi);
+      setTasks(prev => ensureRoutineTasksForDate(mergeCloudTasks(prev, cloudTasks), localTodayISO()).map(normalizeTask));
+      setBackendNotice({ type:"success", message:`Synced ${cloudTasks.length} cloud task${cloudTasks.length === 1 ? "" : "s"}.` });
+    } catch (error) {
+      setBackendNotice({ type:"error", message:String(error?.message || error) });
+    } finally {
+      setBackendBusy(false);
+    }
+  }, []);
+
+  const handleBackendLogin = useCallback(async (payload) => {
+    setBackendBusy(true);
+    setBackendNotice({ type:"info", message:"Logging in to AFTERGLOW backend..." });
+    try {
+      const result = await afterglowApiRequest("/api/auth/login", { method:"POST", body:JSON.stringify(payload) });
+      setStoredAuth(result.token, result.user);
+      setAuth({ token:result.token, user:result.user });
+      setBackendNotice({ type:"success", message:"Backend connected. Loading cloud tasks..." });
+      const taskResult = await afterglowApiRequest("/api/tasks?limit=500");
+      const cloudTasks = (taskResult.data || []).map(taskFromApi);
+      setTasks(prev => ensureRoutineTasksForDate(mergeCloudTasks(prev, cloudTasks), localTodayISO()).map(normalizeTask));
+      setBackendNotice({ type:"success", message:`Connected as ${result.user?.name || "user"}. ${cloudTasks.length} cloud task${cloudTasks.length === 1 ? "" : "s"} loaded.` });
+    } catch (error) {
+      setBackendNotice({ type:"error", message:String(error?.message || error) });
+    } finally {
+      setBackendBusy(false);
+    }
+  }, []);
+
+  const handleBackendRegister = useCallback(async (payload) => {
+    setBackendBusy(true);
+    setBackendNotice({ type:"info", message:"Creating backend account..." });
+    try {
+      const result = await afterglowApiRequest("/api/auth/register", { method:"POST", body:JSON.stringify(payload) });
+      setStoredAuth(result.token, result.user);
+      setAuth({ token:result.token, user:result.user });
+      setBackendNotice({ type:"success", message:`Account created for ${result.user?.name || "user"}. Use Upload Local Tasks to move existing tasks to MongoDB.` });
+    } catch (error) {
+      setBackendNotice({ type:"error", message:String(error?.message || error) });
+    } finally {
+      setBackendBusy(false);
+    }
+  }, []);
+
+  const handleBackendLogout = useCallback(() => {
+    setStoredAuth("", null);
+    setAuth({ token:"", user:null });
+    setBackendNotice({ type:"info", message:"Logged out from backend. Local data remains available." });
+  }, []);
+
+  const uploadLocalTasksToCloud = useCallback(async () => {
+    if (!getStoredAuthToken()) {
+      setBackendNotice({ type:"error", message:"Login first before uploading local tasks." });
+      return;
+    }
+    const localOnly = tasks.map(normalizeTask).filter(task => !getTaskCloudId(task));
+    if (!localOnly.length) {
+      setBackendNotice({ type:"success", message:"All visible tasks already have cloud IDs." });
+      return;
+    }
+    setBackendBusy(true);
+    setBackendNotice({ type:"info", message:`Uploading ${localOnly.length} local task${localOnly.length === 1 ? "" : "s"} to MongoDB...` });
+    try {
+      const uploaded = [];
+      for (const task of localOnly) {
+        const result = await afterglowApiRequest("/api/tasks", { method:"POST", body:JSON.stringify(taskPayloadForApi(task)) });
+        if (result.data) uploaded.push(taskFromApi(result.data));
+      }
+      setTasks(prev => mergeCloudTasks(prev, uploaded));
+      setBackendNotice({ type:"success", message:`Uploaded ${uploaded.length} task${uploaded.length === 1 ? "" : "s"} to MongoDB.` });
+    } catch (error) {
+      setBackendNotice({ type:"error", message:String(error?.message || error) });
+    } finally {
+      setBackendBusy(false);
+    }
+  }, [tasks]);
+
   const sp = SPACES.find(s => s.id === activeSpace) || SPACES[0];
   const deadlineMatches = useCallback((task, filter) => {
     if (filter === "All") return true;
@@ -3279,35 +4360,73 @@ function AfterglowApp() {
     const statusOk = statusFilter === "All" ? true : t.status === statusFilter;
     const priorityOk = priorityFilter === "All" ? true : t.priority === priorityFilter;
     const deadlineOk = deadlineMatches(t, deadlineFilter);
-    const completedOk = showDoneTasks || settings?.tasks?.completedVisibility !== "hide" || statusFilter === "Done" || t.status !== "Done";
-    return scopeOk && statusOk && priorityOk && deadlineOk && completedOk && txt.includes(query.toLowerCase());
-  })), [tasks, activeSpace, query, spaceFilter, statusFilter, priorityFilter, deadlineFilter, deadlineMatches, settings?.tasks?.completedVisibility, showDoneTasks]);
+    return scopeOk && statusOk && priorityOk && deadlineOk && txt.includes(query.toLowerCase());
+  })), [tasks, activeSpace, query, spaceFilter, statusFilter, priorityFilter, deadlineFilter, deadlineMatches]);
 
-  const createTask = useCallback((t) => {
+  const createTask = useCallback(async (t) => {
     const task = normalizeTask({ priority:settings?.tasks?.defaultPriority || "Normal", ...t });
     const finalTask = task.status === "Done" && !task.completedAt ? { ...task, completedAt:new Date().toISOString(), locked:true } : task;
     setTasks(prev => sortTasksSmart([finalTask, ...prev]));
     setSelected(finalTask);
     setView("list");
     setShowNewTask(false);
+    if (!getStoredAuthToken()) return;
+    try {
+      const result = await afterglowApiRequest("/api/tasks", { method:"POST", body:JSON.stringify(taskPayloadForApi(finalTask)) });
+      if (result.data) {
+        const cloudTask = taskFromApi(result.data);
+        setTasks(prev => sortTasksSmart(prev.map(item => item.id === finalTask.id ? cloudTask : item)));
+        setSelected(cloudTask);
+        setBackendNotice({ type:"success", message:"Task saved to MongoDB." });
+      }
+    } catch (error) {
+      setBackendNotice({ type:"error", message:`Task saved locally, but cloud save failed: ${String(error?.message || error)}` });
+    }
   }, [settings?.tasks?.defaultPriority]);
-  const updateTask = useCallback((u) => {
+  const updateTask = useCallback(async (u) => {
+    let cloudId = getTaskCloudId(u);
+    let apiPayload = null;
     setTasks(prev => {
       let selectedNext = null;
       const mapped = prev.map(t => {
-        if (t.id !== u.id) return t;
+        if (t.id !== u.id && getTaskCloudId(t) !== cloudId) return t;
         const oldTask = normalizeTask(t);
+        if (!cloudId) cloudId = getTaskCloudId(oldTask);
         let nextTask = normalizeTask({ ...oldTask, ...u, updatedAt:new Date().toISOString() });
         if (nextTask.status === "Done" && oldTask.status !== "Done") nextTask = { ...nextTask, completedAt:new Date().toISOString(), locked:true };
         if (nextTask.status !== "Done" && oldTask.status === "Done") nextTask = { ...nextTask, completedAt:"", locked:false };
+        apiPayload = nextTask;
         selectedNext = nextTask;
         return nextTask;
       });
       if (selectedNext) setSelected(selectedNext);
       return sortTasksSmart(mapped);
     });
+    if (!getStoredAuthToken() || !cloudId || !apiPayload) return;
+    try {
+      const result = await afterglowApiRequest(`/api/tasks/${cloudId}`, { method:"PATCH", body:JSON.stringify(taskPayloadForApi(apiPayload)) });
+      if (result.data) {
+        const cloudTask = taskFromApi(result.data);
+        setTasks(prev => sortTasksSmart(prev.map(item => (item.id === apiPayload.id || getTaskCloudId(item) === cloudId) ? cloudTask : item)));
+        setSelected(prev => prev && (prev.id === apiPayload.id || getTaskCloudId(prev) === cloudId) ? cloudTask : prev);
+      }
+    } catch (error) {
+      setBackendNotice({ type:"error", message:`Cloud update failed: ${String(error?.message || error)}` });
+    }
   }, []);
-  const deleteTask = useCallback((id) => { setTasks(prev => prev.filter(t => t.id !== id)); setSelected(null); }, []);
+  const deleteTask = useCallback(async (id) => {
+    const target = tasks.find(t => t.id === id || getTaskCloudId(t) === id);
+    const cloudId = getTaskCloudId(target || { id });
+    setTasks(prev => prev.filter(t => t.id !== id && getTaskCloudId(t) !== id));
+    setSelected(null);
+    if (!getStoredAuthToken() || !cloudId) return;
+    try {
+      await afterglowApiRequest(`/api/tasks/${cloudId}`, { method:"DELETE" });
+      setBackendNotice({ type:"success", message:"Task deleted from MongoDB." });
+    } catch (error) {
+      setBackendNotice({ type:"error", message:`Deleted locally, but cloud delete failed: ${String(error?.message || error)}` });
+    }
+  }, [tasks]);
   const goSpace = (id) => {
     const safeId = SPACES.some(space => space.id === id) ? id : "wakeup";
     setActiveSpace(safeId);
@@ -3389,55 +4508,6 @@ function AfterglowApp() {
 
   const VIEWS = activeSpace === "mopas" ? ["list","board","calendar","Goals","documents","daily report","tender folder"] : ["list","board","calendar","Goals","documents"];
 
-  // ── AUTH SCREENS ──────────────────────────────────────────────────────────
-  if (!authReady) return (
-    <div style={{ minHeight:"100vh", background:"#1A1A19", display:"flex", alignItems:"center", justifyContent:"center", color:"#CF6B11", fontFamily:"Montserrat, sans-serif", fontSize:14 }}>
-      Loading AFTERGLOW...
-    </div>
-  );
-
-  if (!isLoggedIn) return (
-    <div style={{ minHeight:"100vh", background:"#1A1A19", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"Montserrat, sans-serif" }}>
-      <div style={{ background:"#232323", border:"1px solid #3a3a38", borderRadius:16, padding:40, width:"100%", maxWidth:400 }}>
-        <div style={{ color:"#CF6B11", fontSize:11, letterSpacing:3, marginBottom:8 }}>AFTERGLOW / MOPAS</div>
-        <div style={{ color:"#F1DDC5", fontSize:24, fontWeight:900, marginBottom:4 }}>Welcome back</div>
-        <div style={{ color:"#888", fontSize:13, marginBottom:32 }}>ISHIMWE Samuel — sign in to continue</div>
-        <div style={{ marginBottom:14 }}>
-          <label style={{ color:"#aaa", fontSize:11, letterSpacing:1, display:"block", marginBottom:6 }}>EMAIL</label>
-          <input
-            type="email"
-            value={loginForm.email}
-            onChange={e => setLoginForm(f => ({ ...f, email:e.target.value }))}
-            placeholder="ishimwesamuel3d@gmail.com"
-            style={{ width:"100%", padding:"11px 14px", borderRadius:8, border:"1px solid #3a3a38", background:"#1A1A19", color:"#F1DDC5", fontSize:14, outline:"none", boxSizing:"border-box" }}
-          />
-        </div>
-        <div style={{ marginBottom:24 }}>
-          <label style={{ color:"#aaa", fontSize:11, letterSpacing:1, display:"block", marginBottom:6 }}>PASSWORD</label>
-          <input
-            type="password"
-            value={loginForm.password}
-            onChange={e => setLoginForm(f => ({ ...f, password:e.target.value }))}
-            placeholder="••••••••"
-            onKeyDown={e => e.key === "Enter" && handleLogin()}
-            style={{ width:"100%", padding:"11px 14px", borderRadius:8, border:"1px solid #3a3a38", background:"#1A1A19", color:"#F1DDC5", fontSize:14, outline:"none", boxSizing:"border-box" }}
-          />
-        </div>
-        {authError && <div style={{ color:"#ff6b6b", fontSize:13, marginBottom:16, padding:"10px 12px", background:"#ff6b6b11", borderRadius:8, border:"1px solid #ff6b6b33" }}>{authError}</div>}
-        <button
-          onClick={handleLogin}
-          disabled={loginLoading}
-          style={{ width:"100%", padding:"13px", borderRadius:8, border:"none", background:"#CF6B11", color:"#fff", fontSize:15, fontWeight:900, cursor:loginLoading ? "not-allowed" : "pointer", opacity:loginLoading ? .7 : 1 }}
-        >
-          {loginLoading ? "Signing in..." : "Sign In →"}
-        </button>
-        <div style={{ color:"#555", fontSize:11, textAlign:"center", marginTop:20 }}>
-          AFTERGLOW Workspace · MOPAS Ltd · Kigali
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <div style={{ display:"flex", height:"100vh", background:C.bg, color:C.cream, fontFamily:"Segoe UI, Helvetica Neue, sans-serif", overflow:"hidden", fontSize: safeSettings.appearance.fontSize === "small" ? 13 : safeSettings.appearance.fontSize === "large" ? 16 : safeSettings.appearance.compactMode ? 13 : 14 }}>
       <aside style={{ width: sidebarOpen ? 260 : 0, minWidth: sidebarOpen ? 260 : 0, background:C.surface, borderRight:"1px solid "+C.border, display:"flex", flexDirection:"column", transition:"all .2s", overflow:"hidden" }}>
@@ -3477,10 +4547,7 @@ function AfterglowApp() {
         </div>
         <div style={{ padding:"10px 18px", borderTop:"5px solid "+C.border, fontSize:11, color:C.muted, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
           <span>{"AFTERGLOW © 2026 · v1"}</span>
-          <div style={{ display:"flex", gap:6 }}>
-            <button title="Settings" onClick={() => { setView("settings"); setSelected(null); }} style={{ width:32, height:32, borderRadius:10, border:"1px solid "+(view === "settings" ? C.orange : C.border), background:view === "settings" ? C.elevated : C.bg, color:view === "settings" ? C.orange : C.creamSoft, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>{"⚙"}</button>
-            <button title="Sign Out" onClick={handleLogout} style={{ width:32, height:32, borderRadius:10, border:"1px solid "+C.border, background:C.bg, color:C.muted, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>{"⏻"}</button>
-          </div>
+          <button title="Settings" onClick={() => { setView("settings"); setSelected(null); }} style={{ width:32, height:32, borderRadius:10, border:"1px solid "+(view === "settings" ? C.orange : C.border), background:view === "settings" ? C.elevated : C.bg, color:view === "settings" ? C.orange : C.creamSoft, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>{"⚙"}</button>
         </div>
       </aside>
 
@@ -3499,6 +4566,7 @@ function AfterglowApp() {
               </span>
             ))}
            
+            <CloudSyncPanel auth={auth} backendNotice={backendNotice} backendBusy={backendBusy} onLogin={handleBackendLogin} onRegister={handleBackendRegister} onLogout={handleBackendLogout} onRefresh={refreshCloudTasks} onUploadLocal={uploadLocalTasksToCloud} />
             <Btn ghost onClick={() => sendTodayDisciplineEmail({ manual:true })}>Email Current Action</Btn>
             <Btn ghost onClick={exportBackup}>Export Backup</Btn>
             <label style={{ padding:"8px 18px", borderRadius:8, border:"1px solid "+C.border, cursor:"pointer", background:"transparent", color:C.cream, fontSize:13, fontWeight:600 }}>
@@ -3525,18 +4593,17 @@ function AfterglowApp() {
             <select value={deadlineFilter} onChange={e => setDeadlineFilter(e.target.value)} style={{ padding:"9px 10px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream }}>
               {["All","Overdue","Today","Tomorrow","This week","No deadline"].map(x => <option key={x} value={x}>{x}</option>)}
             </select>
-            <Btn ghost onClick={() => setShowDoneTasks(v => !v)}>{showDoneTasks ? "Hide Done" : "Show Done"}</Btn>
           </div>
         )}
 
         <div style={{ flex:1, overflow:"auto", padding:20, minWidth:0 }}>
-          {view === "dashboard" ? <Dashboard tasks={tasks} activeSpace={activeSpace} settings={safeSettings} goSpace={goSpace} setView={setView} setActiveSpace={setActiveSpace} setSelected={setSelected} setShowNewTask={setShowNewTask} setShowEndDayReview={setShowEndDayReview} /> : view === "settings" ? (
+          {view === "dashboard" ? <Dashboard tasks={tasks} activeSpace={activeSpace} settings={safeSettings} goSpace={goSpace} setView={setView} setActiveSpace={setActiveSpace} setSelected={setSelected} setShowNewTask={setShowNewTask} setShowEndDayReview={setShowEndDayReview} onUpdate={updateTask} /> : view === "settings" ? (
             <SettingsView settings={safeSettings} setSettings={setSettings} tasks={tasks} exportBackup={exportBackup} importBackup={importBackup} resetSettingsOnly={resetSettingsOnly} clearTestData={clearTestData} sendTodayDisciplineEmail={sendTodayDisciplineEmail} emailNotice={emailNotice} />
           ) : (
             <div style={{ display:"grid", gridTemplateColumns: (view === "list" || view === "board") ? (isCompactLayout ? "1fr" : "minmax(0, 1fr) minmax(320px, 500px)") : "1fr", gap:18, alignItems:"start", minWidth:0, maxWidth:"100%" }}>
               <div style={{ minWidth:0, overflow:"hidden" }}>
-                {view === "list" && <ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} showDoneTasks={showDoneTasks} setShowDoneTasks={setShowDoneTasks} />}
-                {view === "board" && <BoardView tasks={filtered} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} showDoneTasks={showDoneTasks} setShowDoneTasks={setShowDoneTasks} />}
+                {view === "list" && (activeSpace === "money" ? <><MoneySpaceFinancialHealth tasks={tasks} onUpdate={updateTask} /><ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} /></> : <ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} />)}
+                {view === "board" && <BoardView tasks={filtered} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} />}
                 {view === "calendar" && <CalendarView tasks={filtered} />}
                 {view === "Goals" && <GoalsView activeSpace={activeSpace} />}
                 {view === "documents" && <DocumentsView activeSpace={activeSpace} settings={safeSettings} />}
