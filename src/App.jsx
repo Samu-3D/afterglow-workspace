@@ -1451,7 +1451,7 @@ function EndDayReviewModal({ tasks, onClose, onSaveReview, onMoveNormalToTomorro
           <ListBlock title="Tomorrow recommended focus" list={reviewData.recommended} color={C.blue} empty="Tomorrow is clear. Prepare creative growth or MOPAS follow-up." />
         </div>
 
-        <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) 300px", gap:14, alignItems:"start" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))", gap:14, alignItems:"start" }}>
           <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:14 }}>
             <Textarea label="REVIEW NOTES" value={notes} onChange={e => setNotes(e.target.value)} placeholder="What worked today? What was missed? What is tomorrow's main focus?" rows={5} />
             {message && <div style={{ color:C.green, fontSize:12, marginTop:4 }}>{message}</div>}
@@ -1801,7 +1801,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
       {sectionTitle("COLLAPSIBLE WEEKLY PROGRESS", "Based on tasks with due dates in this week.", <Btn small ghost onClick={() => setShowWeeklyProgress(v => !v)}>{showWeeklyProgress ? "Hide" : "Show"}</Btn>)}
       {showWeeklyProgress ? (
         <>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10, marginBottom:14 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(120px, 1fr))", gap:10, marginBottom:14 }}>
             <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.green, fontSize:22, fontWeight:900 }}>{dashboardData.doneThisWeek.length}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Completed</div></div>
             <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.blue, fontSize:22, fontWeight:900 }}>{dashboardData.dueThisWeek.length}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Due this week</div></div>
             <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}><div style={{ color:C.orange, fontSize:22, fontWeight:900 }}>{weekPct}%</div><div style={{ color:C.creamSoft, fontSize:11 }}>Completion</div></div>
@@ -1977,7 +1977,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
 
   const CoachPanel = () => (
     <div style={{ ...PNL, padding:24, background:`linear-gradient(135deg, ${C.elevated}, ${C.surface})`, borderLeft:"5px solid "+coach.color, boxShadow:"0 18px 50px #0005" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) auto", gap:16, alignItems:"center" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:16, alignItems:"center" }}>
         <div style={{ minWidth:0 }}>
           <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:6 }}>MENTAL COACH / DO THIS NOW</div>
           <div style={{ color:C.cream, fontSize:24, fontWeight:900, lineHeight:1.15, marginBottom:8 }}>{coach.title}</div>
@@ -2003,7 +2003,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
     const openCalendar = () => goView(activeSpace || "wakeup", "calendar");
     return (
       <div style={{ ...PNL, minWidth:0, borderLeft:"5px solid "+C.orange, padding:22, background:`linear-gradient(135deg, ${C.surface}, ${C.elevated})`, boxShadow:"0 16px 45px #0004" }}>
-        <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) auto", gap:14, alignItems:"start" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:14, alignItems:"start" }}>
           <div style={{ minWidth:0 }}>
             <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:5 }}>PROFESSIONAL COMMAND CENTER</div>
             <h2 style={{ margin:"0 0 6px", color:C.cream, fontSize:24, lineHeight:1.15 }}>{mergedSettings.appearance.dashboardLabel || "Command Center"}</h2>
@@ -2060,7 +2060,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
           </div>
         ))}
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) minmax(260px, .7fr)", gap:14, alignItems:"start" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))", gap:14, alignItems:"start" }}>
         <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:14 }}>
           <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>FIRST 7-DAY TEST</div>
           <div style={{ display:"grid", gap:7 }}>
@@ -2340,7 +2340,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
 
       {commandVisible("taskCategories") && <div style={{ order:commandOrder("taskCategories") }}><TaskCategoryPanel /></div>}
 
-      <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1.35fr) minmax(320px, .65fr)", gap:16, alignItems:"start" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:16, alignItems:"start" }}>
         <div style={{ display:"grid", gap:16, minWidth:0 }}>
           {commandVisible("todayFocus") && <div style={{ ...PNL, padding:22, background:`linear-gradient(135deg, ${C.surface}, ${C.elevated})`, borderLeft:"4px solid "+C.orange, order:commandOrder("todayFocus") }}>
             {sectionTitle("TODAY FOCUS / PRIORITY ACTIONS", "A clean control center for the next important work.", <Badge color={C.orange}>Top {dashboardData.todayFocus.length}</Badge>)}
@@ -2690,7 +2690,7 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
           </div>
 
           {(moneyMode === "overview" || moneyMode === "ledger") && (
-            <div style={{ display:"grid", gridTemplateColumns:"minmax(280px, 380px) minmax(0, 1fr)", gap:12, alignItems:"start", marginBottom:12 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:12, alignItems:"start", marginBottom:12 }}>
               <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}>
                 <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>{moneyForm.id ? "EDIT MONEY ENTRY" : "ADD MONEY ENTRY"}</div>
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
@@ -3705,7 +3705,7 @@ function DocumentsView({ activeSpace, settings }) {
   };
 
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"minmax(280px, 380px) minmax(0, 1fr)", gap:18, alignItems:"start" }}>
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:18, alignItems:"start" }}>
       <div style={PNL}>
         <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:4 }}>ADD DOCUMENT</div>
         <div style={{ color:C.creamSoft, fontSize:12, marginBottom:12 }}>Default Drive folder: {docSettings.googleDriveFolderId || DEFAULT_DRIVE_FOLDER_ID}</div>
@@ -3815,7 +3815,7 @@ function DailyReportView() {
   };
 
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"420px 1fr", gap:18, alignItems:"start" }}>
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:18, alignItems:"start" }}>
       <div style={PNL}>
         <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:10 }}>MOPAS DAILY REPORT</div>
         <Input label="DATE" type="date" value={form.date} onChange={set("date")} />
@@ -3951,7 +3951,7 @@ function TenderFolderCreator() {
         </div>
         <Btn orange onClick={downloadBat}>Download Folder Creator .bat</Btn>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 160px", gap:10 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:10 }}>
         <Input label="TENDER NAME" value={form.tenderName} onChange={e => setForm(f => ({ ...f, tenderName:e.target.value }))} placeholder="e.g. Audio Visual Production" />
         <Input label="CLIENT" value={form.client} onChange={e => setForm(f => ({ ...f, client:e.target.value }))} placeholder="e.g. NESA" />
         <Input label="YEAR" value={form.year} onChange={e => setForm(f => ({ ...f, year:e.target.value }))} placeholder="2026" />
@@ -3960,7 +3960,7 @@ function TenderFolderCreator() {
         <div style={{ color:C.gold, fontSize:10, letterSpacing:2, marginBottom:6 }}>FOLDER PATH PREVIEW</div>
         <div style={{ color:C.cream, fontSize:13, wordBreak:"break-word" }}>{rootPath}</div>
       </div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10, marginTop:14 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:10, marginTop:14 }}>
         {["Administrative Documents", "Technical Proposal", "Financial Proposal", "Forms to Fill", "Final Submission Files", "Proof of Submission"].map(x => (
           <div key={x} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:12, color:C.creamSoft, fontSize:12 }}>{x}</div>
         ))}
@@ -3996,7 +3996,7 @@ function AuthGate({ backendNotice, backendBusy, onLogin, onRegister }) {
               After login, AFTERGLOW connects to the backend and syncs from MongoDB automatically.
             </p>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10, marginTop:18 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(110px, 1fr))", gap:10, marginTop:18 }}>
             {["Cloud Sync", "MongoDB", "Daily OS"].map(item => (
               <div key={item} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12, color:C.creamSoft, fontSize:12, fontWeight:800 }}>{item}</div>
             ))}
@@ -4026,19 +4026,19 @@ function AuthGate({ backendNotice, backendBusy, onLogin, onRegister }) {
   );
 }
 
-function CloudSyncPanel({ auth, backendNotice, backendBusy, onLogin, onRegister, onLogout, onRefresh, onUploadLocal }) {
+function CloudSyncPanel({ auth, backendNotice, backendBusy, onLogin, onRegister, onLogout, onRefresh, onUploadLocal, placement = "bottom", compact = false }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name:"Samu", email:"ishimwesamuel3d@gmail.com", password:"" });
   const isConnected = !!auth?.token;
   const submitLogin = () => onLogin({ email:form.email.trim(), password:form.password });
   const submitRegister = () => onRegister({ name:form.name.trim() || "Samu", email:form.email.trim(), password:form.password });
   return (
-    <div style={{ position:"relative" }}>
-      <Btn ghost small onClick={() => setOpen(v => !v)} style={{ borderColor:isConnected ? C.green : C.border, color:isConnected ? C.green : C.cream }}>
+    <div style={{ position:"relative", minWidth: compact ? 0 : undefined }}>
+      <Btn ghost small onClick={() => setOpen(v => !v)} style={{ borderColor:isConnected ? C.green : C.border, color:isConnected ? C.green : C.cream, width: compact ? "100%" : undefined, whiteSpace:"nowrap" }}>
         {isConnected ? "Cloud Connected" : "Connect Backend"}
       </Btn>
       {open && (
-        <div style={{ position:"absolute", right:0, top:"calc(100% + 8px)", width:360, maxWidth:"86vw", background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:14, zIndex:40, boxShadow:"0 20px 60px #0009" }}>
+        <div style={{ position:"absolute", right:0, ...(placement === "top" ? { bottom:"calc(100% + 8px)" } : { top:"calc(100% + 8px)" }), width:360, maxWidth:"calc(100vw - 24px)", background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:14, zIndex:80, boxShadow:"0 20px 60px #0009" }}>
           <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", marginBottom:10 }}>
             <div>
               <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:800 }}>BACKEND SYNC</div>
@@ -4131,6 +4131,8 @@ function AfterglowApp() {
   const [screenWidth, setScreenWidth] = useState(() => typeof window !== "undefined" ? window.innerWidth : 1366);
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" ? window.innerWidth >= 900 : true);
   const isCompactLayout = screenWidth < 1100;
+  const isPhoneLayout = screenWidth <= 430;
+  const isMobileLayout = screenWidth < 768;
   const safeSettings = useMemo(() => mergeAppSettings(settings || {}), [settings]);
   applyAppearanceSettings(safeSettings);
 
@@ -4439,6 +4441,7 @@ function AfterglowApp() {
   }, [tasks]);
   const goSpace = (id) => {
     const safeId = SPACES.some(space => space.id === id) ? id : "wakeup";
+    if (isMobileLayout) setSidebarOpen(false);
     setActiveSpace(safeId);
     setView("list");
     setSelected(null);
@@ -4516,11 +4519,12 @@ function AfterglowApp() {
     writeStore(DOCUMENTS_KEY, docs.filter(d => !String(d.id || "").startsWith("TEST-") && !String(d.title || "").toLowerCase().includes("test data")));
   }, []);
 
-  const VIEWS = activeSpace === "mopas" ? ["list","board","calendar","Goals","documents","daily report","tender folder"] : ["list","board","calendar","Goals","documents"];
+  const VIEWS = activeSpace === "mopas" ? ["list","calendar","Goals","documents","daily report","tender folder"] : ["list","calendar","Goals","documents"];
 
   return (
-    <div style={{ display:"flex", height:"100vh", background:C.bg, color:C.cream, fontFamily:"Segoe UI, Helvetica Neue, sans-serif", overflow:"hidden", fontSize: safeSettings.appearance.fontSize === "small" ? 13 : safeSettings.appearance.fontSize === "large" ? 16 : safeSettings.appearance.compactMode ? 13 : 14 }}>
-      <aside style={{ width: sidebarOpen ? 260 : 0, minWidth: sidebarOpen ? 260 : 0, background:C.surface, borderRight:"1px solid "+C.border, display:"flex", flexDirection:"column", transition:"all .2s", overflow:"hidden" }}>
+    <div style={{ display:"flex", height:"100vh", minHeight:"100dvh", background:C.bg, color:C.cream, fontFamily:"Segoe UI, Helvetica Neue, sans-serif", overflow:"hidden", fontSize: safeSettings.appearance.fontSize === "small" ? 13 : safeSettings.appearance.fontSize === "large" ? 16 : safeSettings.appearance.compactMode ? 13 : 14 }}>
+      {isMobileLayout && sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position:"fixed", inset:0, background:"#0008", zIndex:20 }} />}
+      <aside style={{ width: sidebarOpen ? (isMobileLayout ? Math.min(screenWidth * 0.86, 310) : 260) : 0, minWidth: sidebarOpen ? (isMobileLayout ? Math.min(screenWidth * 0.86, 310) : 260) : 0, maxWidth:"88vw", background:C.surface, borderRight:"1px solid "+C.border, display:"flex", flexDirection:"column", transition:"all .2s", overflow:"hidden", position:isMobileLayout ? "fixed" : "relative", left:0, top:0, bottom:0, height:"100dvh", zIndex:isMobileLayout ? 30 : 1, boxShadow:isMobileLayout && sidebarOpen ? "18px 0 50px #000a" : "none" }}>
         <div style={{ padding:"20px 18px 8px" }}><Logo size={safeSettings.appearance.logoSize || safeSettings.general.logoSize} /></div>
         {safeSettings.appearance.workspaceCard !== false && <div style={{ padding:"8px 18px" }}>
 
@@ -4555,29 +4559,31 @@ function AfterglowApp() {
             );
           })}
         </div>
-        <div style={{ padding:"10px 18px", borderTop:"5px solid "+C.border, fontSize:11, color:C.muted, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
-          <span>{"AFTERGLOW © 2026 · v1"}</span>
-          <button title="Settings" onClick={() => { setView("settings"); setSelected(null); }} style={{ width:32, height:32, borderRadius:10, border:"1px solid "+(view === "settings" ? C.orange : C.border), background:view === "settings" ? C.elevated : C.bg, color:view === "settings" ? C.orange : C.creamSoft, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>{"⚙"}</button>
+        <div style={{ padding:isPhoneLayout ? "10px 12px" : "12px 18px", borderTop:"1px solid "+C.border, fontSize:11, color:C.muted, display:"grid", gap:10 }}>
+          <CloudSyncPanel auth={auth} backendNotice={backendNotice} backendBusy={backendBusy} onLogin={handleBackendLogin} onRegister={handleBackendRegister} onLogout={handleBackendLogout} onRefresh={refreshCloudTasks} onUploadLocal={uploadLocalTasksToCloud} placement="top" compact />
+          <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:8, alignItems:"center" }}>
+            <span style={{ minWidth:0, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{"AFTERGLOW © 2026"}</span>
+            <button title="Settings" onClick={() => { setView("settings"); setSelected(null); if (isMobileLayout) setSidebarOpen(false); }} style={{ width:36, height:36, borderRadius:10, border:"1px solid "+(view === "settings" ? C.orange : C.border), background:view === "settings" ? C.elevated : C.bg, color:view === "settings" ? C.orange : C.creamSoft, cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center" }}>{"⚙"}</button>
+            <button title="Logout" onClick={handleBackendLogout} style={{ height:36, padding:"0 10px", borderRadius:10, border:"1px solid "+C.red, background:"transparent", color:C.red, cursor:"pointer", fontSize:12, fontWeight:800 }}>Logout</button>
+          </div>
         </div>
       </aside>
 
       <main style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 }}>
-        <header style={{ padding:"14px 24px", borderBottom:"1px solid "+C.border, display:"flex", justifyContent:"space-between", alignItems:"center", background:C.surface, flexWrap:"wrap", gap:10 }}>
+        <header style={{ padding:isPhoneLayout ? "10px 12px" : "14px 24px", borderBottom:"1px solid "+C.border, display:"flex", justifyContent:"space-between", alignItems:"center", background:C.surface, flexWrap:"wrap", gap:isPhoneLayout ? 8 : 10 }}>
           <div style={{ display:"flex", alignItems:"center", gap:9 }}>
             <span onClick={() => setSidebarOpen(o => !o)} style={{ cursor:"pointer", fontSize:20, color:C.creamSoft }}>{"\u2630"}</span>
             <div>
-              <div style={{ fontWeight:700, fontSize:16 }}>{view === "dashboard" ? (safeSettings.appearance.dashboardLabel || "Command Center") : view === "settings" ? "Settings" : sp.name}</div>
+              <div style={{ fontWeight:700, fontSize:isPhoneLayout ? 14 : 16, maxWidth:isPhoneLayout ? 230 : "none", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{view === "dashboard" ? (safeSettings.appearance.dashboardLabel || "Command Center") : view === "settings" ? "Settings" : sp.name}</div>
             </div>
           </div>
-          <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+          <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:isPhoneLayout ? "nowrap" : "wrap", overflowX:isPhoneLayout ? "auto" : "visible", maxWidth:isPhoneLayout ? "100%" : undefined, width:isPhoneLayout ? "100%" : undefined, paddingBottom:isPhoneLayout ? 2 : 0 }}>
             {view !== "dashboard" && view !== "settings" && VIEWS.map(v => (
-              <span key={v} onClick={() => setView(v)} style={{ padding:"5px 14px", borderRadius:6, cursor:"pointer", fontSize:12, fontWeight:600, background: view === v ? C.elevated : "transparent", color: view === v ? C.orange : C.creamSoft, border: view === v ? "1px solid "+C.border : "1px solid transparent" }}>
+              <span key={v} onClick={() => setView(v)} style={{ padding:"5px 14px", borderRadius:6, cursor:"pointer", fontSize:12, fontWeight:600, background: view === v ? C.elevated : "transparent", color: view === v ? C.orange : C.creamSoft, border: view === v ? "1px solid "+C.border : "1px solid transparent", whiteSpace:"nowrap", flexShrink:0 }}>
                 {v.split(" ").map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(" ")}
               </span>
             ))}
-           
-            <CloudSyncPanel auth={auth} backendNotice={backendNotice} backendBusy={backendBusy} onLogin={handleBackendLogin} onRegister={handleBackendRegister} onLogout={handleBackendLogout} onRefresh={refreshCloudTasks} onUploadLocal={uploadLocalTasksToCloud} />
-            <Btn ghost onClick={handleBackendLogout} style={{ color:C.red, borderColor:C.red }}>Logout</Btn>
+
             <Btn ghost onClick={() => sendTodayDisciplineEmail({ manual:true })}>Email Current Action</Btn>
             <Btn ghost onClick={exportBackup}>Export Backup</Btn>
             <label style={{ padding:"8px 18px", borderRadius:8, border:"1px solid "+C.border, cursor:"pointer", background:"transparent", color:C.cream, fontSize:13, fontWeight:600 }}>
@@ -4589,7 +4595,7 @@ function AfterglowApp() {
         </header>
 
         {view !== "dashboard" && view !== "settings" && (
-          <div style={{ padding:"12px 24px", borderBottom:"1px solid "+C.border, background:C.surface, display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:10, alignItems:"center" }}>
+          <div style={{ padding:isPhoneLayout ? "10px 12px" : "12px 24px", borderBottom:"1px solid "+C.border, background:C.surface, display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "repeat(auto-fit, minmax(150px, 1fr))", gap:10, alignItems:"center" }}>
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Global search: task, tender, goal, document keyword..." style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, outline:"none", boxSizing:"border-box" }} />
             <select value={spaceFilter} onChange={e => setSpaceFilter(e.target.value)} style={{ padding:"9px 10px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream }}>
               <option value="active">Current space</option>
@@ -4607,21 +4613,20 @@ function AfterglowApp() {
           </div>
         )}
 
-        <div style={{ flex:1, overflow:"auto", padding:20, minWidth:0 }}>
+        <div style={{ flex:1, overflow:"auto", padding:isPhoneLayout ? 10 : isMobileLayout ? 14 : 20, minWidth:0 }}>
           {view === "dashboard" ? <Dashboard tasks={tasks} activeSpace={activeSpace} settings={safeSettings} goSpace={goSpace} setView={setView} setActiveSpace={setActiveSpace} setSelected={setSelected} setShowNewTask={setShowNewTask} setShowEndDayReview={setShowEndDayReview} onUpdate={updateTask} /> : view === "settings" ? (
             <SettingsView settings={safeSettings} setSettings={setSettings} tasks={tasks} exportBackup={exportBackup} importBackup={importBackup} resetSettingsOnly={resetSettingsOnly} clearTestData={clearTestData} sendTodayDisciplineEmail={sendTodayDisciplineEmail} emailNotice={emailNotice} />
           ) : (
-            <div style={{ display:"grid", gridTemplateColumns: (view === "list" || view === "board") ? (isCompactLayout ? "1fr" : "minmax(0, 1fr) minmax(320px, 500px)") : "1fr", gap:18, alignItems:"start", minWidth:0, maxWidth:"100%" }}>
+            <div style={{ display:"grid", gridTemplateColumns: view === "list" ? (isCompactLayout ? "1fr" : "minmax(0, 1fr) minmax(320px, 500px)") : "1fr", gap:18, alignItems:"start", minWidth:0, maxWidth:"100%" }}>
               <div style={{ minWidth:0, overflow:"hidden" }}>
                 {view === "list" && (activeSpace === "money" ? <><MoneySpaceFinancialHealth tasks={tasks} onUpdate={updateTask} /><ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} /></> : <ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} />)}
-                {view === "board" && <BoardView tasks={filtered} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} />}
                 {view === "calendar" && <CalendarView tasks={filtered} />}
                 {view === "Goals" && <GoalsView activeSpace={activeSpace} />}
                 {view === "documents" && <DocumentsView activeSpace={activeSpace} settings={safeSettings} />}
                 {view === "daily report" && activeSpace === "mopas" && <DailyReportView />}
                 {view === "tender folder" && activeSpace === "mopas" && <TenderFolderCreator />}
               </div>
-              {(view === "list" || view === "board") && <TaskDetail task={selected} onUpdate={updateTask} onDelete={deleteTask} />}
+              {view === "list" && <TaskDetail task={selected} onUpdate={updateTask} onDelete={deleteTask} />}
             </div>
           )}
         </div>
