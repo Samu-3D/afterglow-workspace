@@ -115,9 +115,9 @@ async function afterglowApiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.success === false) {
-    if (response.status === 401) setStoredAuth("", null);
     const error = new Error(data.message || `API request failed (${response.status})`);
     error.status = response.status;
+    error.data = data;
     throw error;
   }
   return data;
@@ -3563,106 +3563,6 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
 
 function DocumentsView({ activeSpace, settings }) {
 
-  const refreshCloudTasks = useCallback(async () => {
-    if (!getStoredAuthToken()) {
-      setBackendNotice({ type:"error", message:"Login first before syncing from backend." });
-      return;
-    }
-    setBackendBusy(true);
-    setBackendNotice({ type:"info", message:"Syncing tasks from MongoDB..." });
-    try {
-      const result = await afterglowApiRequest("/api/tasks?limit=500");
-      const cloudTasks = (result.data || []).map(taskFromApi);
-      setTasks(prev => ensureRoutineTasksForDate(mergeCloudTasks(prev, cloudTasks), localTodayISO()).map(normalizeTask));
-      setBackendNotice({ type:"success", message:`Synced ${cloudTasks.length} cloud task${cloudTasks.length === 1 ? "" : "s"}.` });
-    } catch (error) {
-      if (error?.status === 401) {
-        setStoredAuth("", null);
-        setAuth({ token:"", user:null });
-        setAutoSyncDone(false);
-        setBackendNotice({ type:"error", message:"Session expired. Please login again." });
-      } else {
-        setBackendNotice({ type:"error", message:String(error?.message || error) });
-      }
-    } finally {
-      setBackendBusy(false);
-    }
-  }, []);
-
-  const handleBackendLogin = useCallback(async (payload) => {
-    setBackendBusy(true);
-    setBackendNotice({ type:"info", message:"Logging in to AFTERGLOW backend..." });
-    try {
-      const result = await afterglowApiRequest("/api/auth/login", { method:"POST", body:JSON.stringify(payload) });
-      setStoredAuth(result.token, result.user);
-      setAuth({ token:result.token, user:result.user });
-      setBackendNotice({ type:"success", message:"Backend connected. Loading cloud tasks..." });
-      const taskResult = await afterglowApiRequest("/api/tasks?limit=500");
-      const cloudTasks = (taskResult.data || []).map(taskFromApi);
-      setTasks(prev => ensureRoutineTasksForDate(mergeCloudTasks(prev, cloudTasks), localTodayISO()).map(normalizeTask));
-      setAutoSyncDone(true);
-      setBackendNotice({ type:"success", message:`Connected as ${result.user?.name || "user"}. ${cloudTasks.length} cloud task${cloudTasks.length === 1 ? "" : "s"} loaded.` });
-    } catch (error) {
-      setBackendNotice({ type:"error", message:String(error?.message || error) });
-    } finally {
-      setBackendBusy(false);
-    }
-  }, []);
-
-  const handleBackendRegister = useCallback(async (payload) => {
-    setBackendBusy(true);
-    setBackendNotice({ type:"info", message:"Creating backend account..." });
-    try {
-      const result = await afterglowApiRequest("/api/auth/register", { method:"POST", body:JSON.stringify(payload) });
-      setStoredAuth(result.token, result.user);
-      setAuth({ token:result.token, user:result.user });
-      setBackendNotice({ type:"success", message:"Account created. Loading cloud tasks..." });
-      const taskResult = await afterglowApiRequest("/api/tasks?limit=500");
-      const cloudTasks = (taskResult.data || []).map(taskFromApi);
-      setTasks(prev => ensureRoutineTasksForDate(mergeCloudTasks(prev, cloudTasks), localTodayISO()).map(normalizeTask));
-      setAutoSyncDone(true);
-      setBackendNotice({ type:"success", message:`Account created for ${result.user?.name || "user"}. ${cloudTasks.length} cloud task${cloudTasks.length === 1 ? "" : "s"} loaded.` });
-    } catch (error) {
-      setBackendNotice({ type:"error", message:String(error?.message || error) });
-    } finally {
-      setBackendBusy(false);
-    }
-  }, []);
-
-  const handleBackendLogout = useCallback(() => {
-    setStoredAuth("", null);
-    setAuth({ token:"", user:null });
-    setAutoSyncDone(false);
-    setBackendNotice({ type:"info", message:"Logged out from backend. Local data remains available." });
-  }, []);
-
-  const uploadLocalTasksToCloud = useCallback(async () => {
-    if (!getStoredAuthToken()) {
-      setBackendNotice({ type:"error", message:"Login first before uploading local tasks." });
-      return;
-    }
-    const localOnly = tasks.map(normalizeTask).filter(task => !getTaskCloudId(task));
-    if (!localOnly.length) {
-      setBackendNotice({ type:"success", message:"All visible tasks already have cloud IDs." });
-      return;
-    }
-    setBackendBusy(true);
-    setBackendNotice({ type:"info", message:`Uploading ${localOnly.length} local task${localOnly.length === 1 ? "" : "s"} to MongoDB...` });
-    try {
-      const uploaded = [];
-      for (const task of localOnly) {
-        const result = await afterglowApiRequest("/api/tasks", { method:"POST", body:JSON.stringify(taskPayloadForApi(task)) });
-        if (result.data) uploaded.push(taskFromApi(result.data));
-      }
-      setTasks(prev => mergeCloudTasks(prev, uploaded));
-      setBackendNotice({ type:"success", message:`Uploaded ${uploaded.length} task${uploaded.length === 1 ? "" : "s"} to MongoDB.` });
-    } catch (error) {
-      setBackendNotice({ type:"error", message:String(error?.message || error) });
-    } finally {
-      setBackendBusy(false);
-    }
-  }, [tasks]);
-
   const sp = SPACES.find(s => s.id === activeSpace) || SPACES[0];
   const docSettings = mergeAppSettings(settings).documents;
   const configuredCategories = String(docSettings.categories || "Company, Tender, Staff, Contract, Finance").split(",").map(x => x.trim()).filter(Boolean);
@@ -4070,59 +3970,56 @@ function TenderFolderCreator() {
 }
 
 
-
 function AuthGate({ backendNotice, backendBusy, onLogin, onRegister }) {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name:"Samu", email:"ishimwesamuel3d@gmail.com", password:"" });
-  const isRegister = mode === "register";
   const submit = () => {
-    const email = form.email.trim();
-    const password = form.password;
-    if (!email || !password) return;
-    if (isRegister) onRegister({ name:form.name.trim() || "Samu", email, password });
-    else onLogin({ email, password });
+    const payload = {
+      name: form.name.trim() || "Samu",
+      email: form.email.trim(),
+      password: form.password,
+    };
+    if (!payload.email || !payload.password) return;
+    if (mode === "register") onRegister(payload);
+    else onLogin({ email:payload.email, password:payload.password });
   };
   return (
-    <div style={{ minHeight:"100vh", background:`radial-gradient(circle at top left, ${C.orange}22, transparent 36%), radial-gradient(circle at bottom right, ${C.gold}18, transparent 34%), ${C.bg}`, color:C.cream, display:"flex", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"Segoe UI, Helvetica Neue, sans-serif" }}>
-      <div style={{ width:"100%", maxWidth:1040, display:"grid", gridTemplateColumns:"minmax(0, 1.1fr) minmax(360px, .9fr)", gap:22, alignItems:"stretch" }}>
-        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:22, padding:28, boxShadow:"0 28px 90px #0008", display:"flex", flexDirection:"column", justifyContent:"space-between", minHeight:520 }}>
+    <div style={{ minHeight:"100vh", background:`radial-gradient(circle at top left, ${C.orange}22, transparent 35%), ${C.bg}`, color:C.cream, display:"flex", alignItems:"center", justifyContent:"center", padding:20, fontFamily:"Segoe UI, Helvetica Neue, sans-serif" }}>
+      <div style={{ width:"100%", maxWidth:980, display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:20, alignItems:"stretch" }}>
+        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:22, padding:28, boxShadow:"0 26px 90px #0008", display:"flex", flexDirection:"column", justifyContent:"space-between", minHeight:360 }}>
           <div>
             <Logo size="large" />
-            <div style={{ color:C.gold, fontSize:12, letterSpacing:2, fontWeight:900, marginTop:20 }}>AFTERGLOW / MOPAS WORKSPACE</div>
-            <h1 style={{ margin:"10px 0 10px", fontSize:42, lineHeight:1.05 }}>Sign in to continue your discipline system.</h1>
-            <p style={{ color:C.creamSoft, fontSize:15, lineHeight:1.7, maxWidth:620 }}>Your tasks, MOPAS work, money tracking, calendar, settings, and daily routine sync through the backend. Login first, then AFTERGLOW opens directly connected to MongoDB Atlas.</p>
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:2.5, fontWeight:900, marginTop:20 }}>AFTERGLOW / MOPAS WORKSPACE</div>
+            <h1 style={{ margin:"10px 0 10px", fontSize:34, lineHeight:1.05 }}>Login first. Work from anywhere.</h1>
+            <p style={{ color:C.creamSoft, lineHeight:1.65, fontSize:14, maxWidth:460 }}>
+              Your tasks, MOPAS operations, money discipline, documents, and command center are protected behind your cloud account.
+              After login, AFTERGLOW connects to the backend and syncs from MongoDB automatically.
+            </p>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:10, marginTop:22 }}>
-            {[
-              ["Cloud Sync", "Tasks load from backend automatically"],
-              ["Secure Access", "Dashboard stays hidden until login"],
-              ["Local Backup", "Browser data remains protected"],
-            ].map(([title, text]) => (
-              <div key={title} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:14 }}>
-                <div style={{ color:C.orange, fontWeight:900, fontSize:13 }}>{title}</div>
-                <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.45, marginTop:5 }}>{text}</div>
-              </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10, marginTop:18 }}>
+            {["Cloud Sync", "MongoDB", "Daily OS"].map(item => (
+              <div key={item} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12, color:C.creamSoft, fontSize:12, fontWeight:800 }}>{item}</div>
             ))}
           </div>
         </div>
-
-        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:22, padding:24, boxShadow:"0 28px 90px #0008", display:"flex", flexDirection:"column", justifyContent:"center" }}>
-          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>{isRegister ? "CREATE ACCOUNT" : "LOGIN REQUIRED"}</div>
-          <h2 style={{ margin:"8px 0 6px", fontSize:26 }}>{isRegister ? "Create your workspace account" : "Welcome back"}</h2>
-          <div style={{ color:C.creamSoft, fontSize:13, lineHeight:1.55, marginBottom:16 }}>Backend: {API_BASE_URL}</div>
-          {isRegister && <Input label="NAME" value={form.name} onChange={e => setForm(f => ({ ...f, name:e.target.value }))} />}
+        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:22, padding:24, boxShadow:"0 26px 90px #0008" }}>
+          <div style={{ display:"flex", gap:8, marginBottom:18, background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:5 }}>
+            <button onClick={() => setMode("login")} style={{ flex:1, border:"none", borderRadius:10, padding:"10px 12px", background:mode === "login" ? C.orange : "transparent", color:mode === "login" ? "#fff" : C.creamSoft, fontWeight:900, cursor:"pointer" }}>Login</button>
+            <button onClick={() => setMode("register")} style={{ flex:1, border:"none", borderRadius:10, padding:"10px 12px", background:mode === "register" ? C.orange : "transparent", color:mode === "register" ? "#fff" : C.creamSoft, fontWeight:900, cursor:"pointer" }}>Register</button>
+          </div>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900, marginBottom:10 }}>{mode === "register" ? "CREATE CLOUD ACCOUNT" : "SIGN IN TO CONTINUE"}</div>
+          {mode === "register" && <Input label="NAME" value={form.name} onChange={e => setForm(f => ({ ...f, name:e.target.value }))} />}
           <Input label="EMAIL" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email:e.target.value }))} />
           <Input label="PASSWORD" type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password:e.target.value }))} onKeyDown={e => { if (e.key === "Enter") submit(); }} placeholder="Enter your password" />
-          <Btn orange disabled={backendBusy || !form.email.trim() || !form.password} onClick={submit} style={{ width:"100%", marginTop:4 }}>{backendBusy ? "Connecting..." : isRegister ? "Create Account & Open AFTERGLOW" : "Login & Open AFTERGLOW"}</Btn>
-          <Btn ghost disabled={backendBusy} onClick={() => setMode(isRegister ? "login" : "register")} style={{ width:"100%", marginTop:10 }}>
-            {isRegister ? "I already have an account" : "Create a new account"}
-          </Btn>
+          <Btn orange disabled={backendBusy || !form.email || !form.password} onClick={submit} style={{ width:"100%", padding:"12px 18px", marginTop:4 }}>{backendBusy ? "Connecting..." : mode === "register" ? "Create Account" : "Login"}</Btn>
           {backendNotice && (
             <div style={{ marginTop:14, background:backendNotice.type === "error" ? C.red+"18" : backendNotice.type === "success" ? C.green+"18" : C.blue+"18", border:"1px solid "+(backendNotice.type === "error" ? C.red : backendNotice.type === "success" ? C.green : C.blue), color:C.cream, borderRadius:12, padding:12, fontSize:12, lineHeight:1.45 }}>
               {backendNotice.message}
             </div>
           )}
-          <div style={{ color:C.muted, fontSize:11, lineHeight:1.45, marginTop:14 }}>After login, cloud sync starts automatically. Use Upload Local Tasks later if you want to move old browser tasks into MongoDB.</div>
+          <div style={{ color:C.muted, fontSize:11, marginTop:14, lineHeight:1.5 }}>
+            API: {API_BASE_URL}<br />Local data stays as backup. Cloud data loads automatically after login.
+          </div>
         </div>
       </div>
     </div>
@@ -4138,7 +4035,7 @@ function CloudSyncPanel({ auth, backendNotice, backendBusy, onLogin, onRegister,
   return (
     <div style={{ position:"relative" }}>
       <Btn ghost small onClick={() => setOpen(v => !v)} style={{ borderColor:isConnected ? C.green : C.border, color:isConnected ? C.green : C.cream }}>
-        {isConnected ? "Cloud Tools" : "Login"}
+        {isConnected ? "Cloud Connected" : "Connect Backend"}
       </Btn>
       {open && (
         <div style={{ position:"absolute", right:0, top:"calc(100% + 8px)", width:360, maxWidth:"86vw", background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:14, zIndex:40, boxShadow:"0 20px 60px #0009" }}>
@@ -4179,7 +4076,7 @@ function CloudSyncPanel({ auth, backendNotice, backendBusy, onLogin, onRegister,
             </div>
           )}
           <div style={{ color:C.muted, fontSize:11, marginTop:10, lineHeight:1.4 }}>
-            Cloud sync is automatic after login. Use these tools to manually refresh or upload old local tasks.
+            Tip: keep backend running on port 5000. New tasks save to MongoDB when connected; localStorage stays as backup.
           </div>
         </div>
       )}
@@ -4335,6 +4232,13 @@ function AfterglowApp() {
   }, [settings?.notifications?.emailNotifications, settings?.notifications?.todayDisciplineEmail, settings?.notifications?.todayDisciplineEmailTime, sendTodayDisciplineEmail]);
 
 
+  const forceBackendLogout = useCallback((message = "Session expired. Please login again.") => {
+    setStoredAuth("", null);
+    setAuth({ token:"", user:null });
+    setAutoSyncDone(false);
+    setBackendNotice({ type:"error", message });
+  }, []);
+
   const refreshCloudTasks = useCallback(async () => {
     if (!getStoredAuthToken()) {
       setBackendNotice({ type:"error", message:"Login first before syncing from backend." });
@@ -4348,24 +4252,18 @@ function AfterglowApp() {
       setTasks(prev => ensureRoutineTasksForDate(mergeCloudTasks(prev, cloudTasks), localTodayISO()).map(normalizeTask));
       setBackendNotice({ type:"success", message:`Synced ${cloudTasks.length} cloud task${cloudTasks.length === 1 ? "" : "s"}.` });
     } catch (error) {
-      if (error?.status === 401) {
-        setStoredAuth("", null);
-        setAuth({ token:"", user:null });
-        setAutoSyncDone(false);
-        setBackendNotice({ type:"error", message:"Session expired. Please login again." });
-      } else {
-        setBackendNotice({ type:"error", message:String(error?.message || error) });
-      }
+      if (error?.status === 401) forceBackendLogout("Session expired. Please login again.");
+      else setBackendNotice({ type:"error", message:String(error?.message || error) });
     } finally {
       setBackendBusy(false);
     }
-  }, []);
+  }, [forceBackendLogout]);
 
   useEffect(() => {
-    if (!auth?.token || autoSyncDone) return;
+    if (!auth.token || autoSyncDone || backendBusy) return;
     setAutoSyncDone(true);
     refreshCloudTasks();
-  }, [auth?.token, autoSyncDone, refreshCloudTasks]);
+  }, [auth.token, autoSyncDone, backendBusy, refreshCloudTasks]);
 
   const handleBackendLogin = useCallback(async (payload) => {
     setBackendBusy(true);
@@ -4381,11 +4279,12 @@ function AfterglowApp() {
       setAutoSyncDone(true);
       setBackendNotice({ type:"success", message:`Connected as ${result.user?.name || "user"}. ${cloudTasks.length} cloud task${cloudTasks.length === 1 ? "" : "s"} loaded.` });
     } catch (error) {
-      setBackendNotice({ type:"error", message:String(error?.message || error) });
+      if (error?.status === 401) forceBackendLogout("Invalid session. Please login again.");
+      else setBackendNotice({ type:"error", message:String(error?.message || error) });
     } finally {
       setBackendBusy(false);
     }
-  }, []);
+  }, [forceBackendLogout]);
 
   const handleBackendRegister = useCallback(async (payload) => {
     setBackendBusy(true);
@@ -4401,11 +4300,12 @@ function AfterglowApp() {
       setAutoSyncDone(true);
       setBackendNotice({ type:"success", message:`Account created for ${result.user?.name || "user"}. ${cloudTasks.length} cloud task${cloudTasks.length === 1 ? "" : "s"} loaded.` });
     } catch (error) {
-      setBackendNotice({ type:"error", message:String(error?.message || error) });
+      if (error?.status === 401) forceBackendLogout("Invalid session. Please login again.");
+      else setBackendNotice({ type:"error", message:String(error?.message || error) });
     } finally {
       setBackendBusy(false);
     }
-  }, []);
+  }, [forceBackendLogout]);
 
   const handleBackendLogout = useCallback(() => {
     setStoredAuth("", null);
@@ -4440,6 +4340,17 @@ function AfterglowApp() {
       setBackendBusy(false);
     }
   }, [tasks]);
+
+  if (!auth.token) {
+    return (
+      <AuthGate
+        backendNotice={backendNotice}
+        backendBusy={backendBusy}
+        onLogin={handleBackendLogin}
+        onRegister={handleBackendRegister}
+      />
+    );
+  }
 
   const sp = SPACES.find(s => s.id === activeSpace) || SPACES[0];
   const deadlineMatches = useCallback((task, filter) => {
@@ -4607,10 +4518,6 @@ function AfterglowApp() {
 
   const VIEWS = activeSpace === "mopas" ? ["list","board","calendar","Goals","documents","daily report","tender folder"] : ["list","board","calendar","Goals","documents"];
 
-  if (!auth?.token) {
-    return <AuthGate backendNotice={backendNotice} backendBusy={backendBusy} onLogin={handleBackendLogin} onRegister={handleBackendRegister} />;
-  }
-
   return (
     <div style={{ display:"flex", height:"100vh", background:C.bg, color:C.cream, fontFamily:"Segoe UI, Helvetica Neue, sans-serif", overflow:"hidden", fontSize: safeSettings.appearance.fontSize === "small" ? 13 : safeSettings.appearance.fontSize === "large" ? 16 : safeSettings.appearance.compactMode ? 13 : 14 }}>
       <aside style={{ width: sidebarOpen ? 260 : 0, minWidth: sidebarOpen ? 260 : 0, background:C.surface, borderRight:"1px solid "+C.border, display:"flex", flexDirection:"column", transition:"all .2s", overflow:"hidden" }}>
@@ -4670,7 +4577,7 @@ function AfterglowApp() {
             ))}
            
             <CloudSyncPanel auth={auth} backendNotice={backendNotice} backendBusy={backendBusy} onLogin={handleBackendLogin} onRegister={handleBackendRegister} onLogout={handleBackendLogout} onRefresh={refreshCloudTasks} onUploadLocal={uploadLocalTasksToCloud} />
-            <Btn ghost small onClick={handleBackendLogout} style={{ color:C.red, borderColor:C.red }}>Logout</Btn>
+            <Btn ghost onClick={handleBackendLogout} style={{ color:C.red, borderColor:C.red }}>Logout</Btn>
             <Btn ghost onClick={() => sendTodayDisciplineEmail({ manual:true })}>Email Current Action</Btn>
             <Btn ghost onClick={exportBackup}>Export Backup</Btn>
             <label style={{ padding:"8px 18px", borderRadius:8, border:"1px solid "+C.border, cursor:"pointer", background:"transparent", color:C.cream, fontSize:13, fontWeight:600 }}>
