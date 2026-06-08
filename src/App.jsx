@@ -2249,6 +2249,103 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
   const goalProgress = useMemo(() => getGoalProgress(tasks, goalsBySpace), [tasks, goalsBySpace]);
   const visibleGoalCards = useMemo(() => Object.entries(goalProgress).flatMap(([space, goals]) => (goals || []).map(goal => ({ ...goal, space }))).sort((a, b) => a.progress - b.progress).slice(0, 6), [goalProgress]);
   const routineStreaks = useMemo(() => DAILY_ROUTINES.map(r => ({ ...r, streak:getRoutineStreak(tasks, r.routineKey, todayKey) })), [tasks, todayKey]);
+
+  const routinePhaseMeta = [
+    { key:"morning", label:"Morning Foundation", period:"Morning", color:C.gold, mission:"Win the first 3 hours: wake, read, train, and plan." },
+    { key:"workday", label:"MOPAS Execution", period:"Workday", color:C.blue, mission:"Protect company work: tenders, follow-up, documents, and delivery." },
+    { key:"evening", label:"Energy Reset", period:"Evening", color:C.green, mission:"Train the body and build creative skill after work." },
+    { key:"night", label:"Night Build", period:"Night", color:C.purple, mission:"Move 43 Project, AFTERGLOW brand, money review, and close the day." },
+    { key:"weekly", label:"Weekly Protection", period:"Weekly", color:C.orange, mission:"Protect weekly savings and long-term discipline." },
+  ];
+  const routinePhaseFor = (routine = {}) => {
+    if (Array.isArray(routine.days)) return routinePhaseMeta.find(p => p.key === "weekly");
+    const minutes = timeToMinutes(routine.time || "23:59");
+    if (minutes < timeToMinutes("08:45")) return routinePhaseMeta.find(p => p.key === "morning");
+    if (minutes < timeToMinutes("18:30")) return routinePhaseMeta.find(p => p.key === "workday");
+    if (minutes < timeToMinutes("21:00")) return routinePhaseMeta.find(p => p.key === "evening");
+    return routinePhaseMeta.find(p => p.key === "night");
+  };
+  const routineEngine = useMemo(() => {
+    const todayDay = (parseDateKey(todayKey) || new Date()).getDay();
+    const dueRoutines = DAILY_ROUTINES.filter(r => !Array.isArray(r.days) || r.days.includes(todayDay));
+    const byKey = new Map(todayRoutineTasks.map(t => [t.routineKey, t]));
+    const cards = dueRoutines.map(routine => {
+      const task = byKey.get(routine.routineKey);
+      const phase = routinePhaseFor(routine);
+      const minutes = timeToMinutes(routine.time || "23:59");
+      const done = task?.status === "Done";
+      const inProgress = task?.status === "In Progress";
+      const open = !done;
+      const isCurrentRoutine = currentBlock?.routineKey === routine.routineKey;
+      const lateByMinutes = open && minutes < nowMinutes ? Math.max(0, nowMinutes - minutes) : 0;
+      const dueSoon = open && minutes >= nowMinutes && minutes - nowMinutes <= 90;
+      const checklistTotal = Array.isArray(task?.checklist) ? task.checklist.length : Array.isArray(routine.checklist) ? routine.checklist.length : 0;
+      const checklistDone = Array.isArray(task?.checklist) ? task.checklist.filter(item => item?.done === true).length : 0;
+      const proofPct = checklistTotal ? Math.round((checklistDone / checklistTotal) * 100) : done ? 100 : 0;
+      const statusLabel = done ? "Done" : inProgress ? "In progress" : isCurrentRoutine ? "Now" : lateByMinutes > 15 ? "Recovery" : dueSoon ? "Next" : "Queued";
+      const formulaScore = Math.max(0, Math.min(100,
+        (routine.priority === "Urgent" ? 30 : routine.priority === "High" ? 22 : routine.priority === "Normal" ? 14 : 8) +
+        (isCurrentRoutine ? 35 : dueSoon ? 25 : lateByMinutes > 15 ? 28 : 10) +
+        (task ? 12 : 0) +
+        (inProgress ? 10 : 0) +
+        (done ? 25 : 0)
+      ));
+      return { routine, task, phase, minutes, done, inProgress, open, isCurrentRoutine, lateByMinutes, dueSoon, checklistTotal, checklistDone, proofPct, statusLabel, formulaScore };
+    }).sort((a, b) => a.minutes - b.minutes);
+    const current = cards.find(card => card.isCurrentRoutine && card.open) || null;
+    const recovery = cards.filter(card => card.open && card.lateByMinutes > 15).sort((a, b) => b.formulaScore - a.formulaScore || a.minutes - b.minutes);
+    const next = cards.filter(card => card.open && card.minutes >= nowMinutes).sort((a, b) => a.minutes - b.minutes)[0] || null;
+    const active = current || next || recovery[0] || cards.find(card => card.open) || null;
+    const completed = cards.filter(card => card.done).length;
+    const total = cards.length || 1;
+    const completion = Math.round((completed / total) * 100);
+    const byPhase = routinePhaseMeta.map(phase => {
+      const items = cards.filter(card => card.phase.key === phase.key);
+      const done = items.filter(card => card.done).length;
+      const score = items.length ? Math.round((done / items.length) * 100) : 100;
+      return { ...phase, items, done, total:items.length, score };
+    }).filter(phase => phase.total > 0 || phase.key !== "weekly");
+    const rules = [
+      { title:"Time block first", note:"The app chooses the current block before old backlog so your day has direction.", color:C.orange },
+      { title:"Missed stays visible", note:"A missed routine is not deleted. It becomes recovery evidence for End Day Review.", color:C.red },
+      { title:"Proof over memory", note:"Use Done only after action. Checklist progress becomes proof of discipline.", color:C.green },
+      { title:"Tomorrow prepared tonight", note:"End Day Review creates tomorrow routines and keeps today as history.", color:C.blue },
+    ];
+    return { cards, active, current, next, recovery, byPhase, completed, total, completion, rules };
+  }, [todayRoutineTasks, todayKey, nowMinutes, currentBlock?.routineKey]);
+  const actOnRoutine = (card, action) => {
+    const task = card?.task;
+    if (!task || typeof onUpdate !== "function") return;
+    if (action === "start") onUpdate({ ...task, status:"In Progress", locked:false });
+    if (action === "done") onUpdate({ ...task, status:"Done", locked:true, completedAt:new Date().toISOString() });
+    if (action === "reopen") onUpdate({ ...task, status:"To Do", locked:false, completedAt:"" });
+  };
+  const RoutineQuickCard = ({ card }) => {
+    const color = card.done ? C.green : card.isCurrentRoutine ? C.orange : card.lateByMinutes > 15 ? C.red : card.phase.color;
+    return (
+      <div onClick={() => card.task && openTask(card.task)} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+color, borderRadius:14, padding:12, cursor:card.task ? "pointer" : "default", minWidth:0 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ color:C.cream, fontSize:13, fontWeight:900, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{card.routine.time ? card.routine.time + " · " : ""}{card.routine.title}</div>
+            <div style={{ color:C.muted, fontSize:11, marginTop:4 }}>{card.phase.label} · {card.task ? card.task.status : "Not created"}</div>
+          </div>
+          <Badge color={color}>{card.statusLabel}</Badge>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:10, alignItems:"center", marginTop:10 }}>
+          <ProgressBar value={card.done ? 100 : card.proofPct} color={color} height={6} />
+          <span style={{ color, fontSize:12, fontWeight:900 }}>{card.formulaScore}</span>
+        </div>
+        <div style={{ color:C.creamSoft, fontSize:11, lineHeight:1.45, marginTop:8, minHeight:30 }}>{card.routine.goal || card.routine.details || "Complete this routine."}</div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:10 }} onClick={e => e.stopPropagation()}>
+          {!card.done && card.task && <Btn small ghost onClick={() => actOnRoutine(card, "start")}>Start</Btn>}
+          {!card.done && card.task && <Btn small orange onClick={() => actOnRoutine(card, "done")}>Done</Btn>}
+          {card.done && card.task && <Btn small ghost onClick={() => actOnRoutine(card, "reopen")}>Reopen</Btn>}
+          {card.task && <Btn small ghost onClick={() => openTask(card.task)}>Open</Btn>}
+        </div>
+      </div>
+    );
+  };
+
   const lifePillarData = useMemo(() => LIFE_OS_PILLARS.map(pillar => {
     const pillarTasks = tasks.filter(t => t.space === pillar.space);
     const open = pillarTasks.filter(t => t.status !== "Done").length;
@@ -2738,31 +2835,52 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
           {commandVisible("lateTasks") && <div style={{ order:commandOrder("lateTasks") }}><LateTasksPanel /></div>}
 
           {commandVisible("dailyRoutine") && <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+C.gold, order:commandOrder("dailyRoutine") }}>
-            {sectionTitle("DAILY ROUTINE PROGRESS", "Daily tasks are created once per day and missed routines stay as history.", <Badge color={tomorrowReady ? C.green : C.gold}>{tomorrowReady ? "Tomorrow ready" : "Tomorrow not prepared"}</Badge>)}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginBottom:14 }}>
-              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:11 }}><div style={{ color:C.green, fontSize:22, fontWeight:900 }}>{completedRoutineKeys.size}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Completed</div></div>
-              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:11 }}><div style={{ color:unfinishedRoutineTasks.length ? C.orange : C.green, fontSize:22, fontWeight:900 }}>{unfinishedRoutineTasks.length}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Unfinished</div></div>
-              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:11 }}><div style={{ color:C.gold, fontSize:22, fontWeight:900 }}>{routinePct}%</div><div style={{ color:C.creamSoft, fontSize:11 }}>Today routine</div></div>
-              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:11 }}><div style={{ color:tomorrowReady ? C.green : C.gold, fontSize:22, fontWeight:900 }}>{tomorrowRoutineKeys.size}/{DAILY_ROUTINES.length}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Tomorrow prep</div></div>
+            {sectionTitle("DAILY ROUTINE ENGINE", "A full operating system for morning, workday, evening, night, recovery, proof and tomorrow preparation.", <Badge color={routineEngine.completion >= 80 ? C.green : routineEngine.completion >= 45 ? C.orange : C.red}>{routineEngine.completion}% engine</Badge>)}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(135px, 1fr))", gap:10, marginBottom:14 }}>
+              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}><div style={{ color:C.orange, fontSize:22, fontWeight:900 }}>{routineEngine.active?.routine?.time || "--:--"}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Next routine action</div></div>
+              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}><div style={{ color:C.green, fontSize:22, fontWeight:900 }}>{routineEngine.completed}/{routineEngine.total}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Proof completed</div></div>
+              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}><div style={{ color:routineEngine.recovery.length ? C.red : C.green, fontSize:22, fontWeight:900 }}>{routineEngine.recovery.length}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Recovery queue</div></div>
+              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}><div style={{ color:tomorrowReady ? C.green : C.gold, fontSize:22, fontWeight:900 }}>{tomorrowRoutineKeys.size}/{DAILY_ROUTINES.length}</div><div style={{ color:C.creamSoft, fontSize:11 }}>Tomorrow prepared</div></div>
             </div>
-            <ProgressBar value={routinePct} color={routinePct >= 80 ? C.green : routinePct >= 40 ? C.orange : C.red} height={7} />
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(210px, 1fr))", gap:8, marginTop:14 }}>
-              {routineStreaks.map(r => {
-                const task = todayRoutineTasks.find(t => t.routineKey === r.routineKey);
-                const complete = task && task.status === "Done";
-                return (
-                  <div key={r.routineKey} onClick={() => task && openTask(task)} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+(complete ? C.green : priorityColor(r.priority)), borderRadius:10, padding:10, cursor:task ? "pointer" : "default", minWidth:0 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"flex-start" }}>
-                      <div style={{ minWidth:0 }}>
-                        <div style={{ color:C.cream, fontSize:13, fontWeight:800, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{r.time ? r.time + " · " : ""}{r.title}</div>
-                        <div style={{ color:C.muted, fontSize:11, marginTop:3 }}>{r.folder} · {task ? task.status : "Not created"}</div>
-                      </div>
-                      <Badge color={complete ? C.green : priorityColor(r.priority)}>{complete ? "Done" : r.priority}</Badge>
-                    </div>
-                  </div>
-                );
-              })}
+            <ProgressBar value={routineEngine.completion} color={routineEngine.completion >= 80 ? C.green : routineEngine.completion >= 45 ? C.orange : C.red} height={8} />
+            <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1.1fr) minmax(260px, .9fr)", gap:14, marginTop:14, alignItems:"start" }}>
+              <div style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+(routineEngine.active?.done ? C.green : routineEngine.active?.lateByMinutes > 15 ? C.red : C.orange), borderRadius:14, padding:14, minWidth:0 }}>
+                <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>CURRENT ROUTINE MISSION</div>
+                <h3 style={{ color:C.cream, margin:"6px 0 6px", fontSize:20 }}>{routineEngine.active?.routine?.title || "No active routine now"}</h3>
+                <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.55 }}>{routineEngine.active ? `${routineEngine.active.phase.label} · ${routineEngine.active.routine.time || "No time"} · ${routineEngine.active.statusLabel}` : "All routine work is clear or not created yet."}</div>
+                {routineEngine.active && <div style={{ color:C.muted, fontSize:12, lineHeight:1.55, marginTop:8 }}>{routineEngine.active.routine.details || routineEngine.active.routine.goal}</div>}
+                {routineEngine.active && <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(90px, 1fr))", gap:8, marginTop:12 }}>
+                  <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:10, padding:9 }}><div style={{ color:C.orange, fontWeight:900 }}>{routineEngine.active.formulaScore}</div><div style={{ color:C.muted, fontSize:10 }}>Impact score</div></div>
+                  <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:10, padding:9 }}><div style={{ color:routineEngine.active.proofPct >= 70 ? C.green : C.gold, fontWeight:900 }}>{routineEngine.active.proofPct}%</div><div style={{ color:C.muted, fontSize:10 }}>Checklist proof</div></div>
+                  <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:10, padding:9 }}><div style={{ color:routineEngine.active.lateByMinutes > 15 ? C.red : C.blue, fontWeight:900 }}>{routineEngine.active.lateByMinutes ? `${routineEngine.active.lateByMinutes}m` : "On time"}</div><div style={{ color:C.muted, fontSize:10 }}>Timing</div></div>
+                </div>}
+                {routineEngine.active && <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
+                  {!routineEngine.active.done && routineEngine.active.task && <Btn ghost onClick={() => actOnRoutine(routineEngine.active, "start")}>Start current</Btn>}
+                  {!routineEngine.active.done && routineEngine.active.task && <Btn orange onClick={() => actOnRoutine(routineEngine.active, "done")}>Mark Done</Btn>}
+                  {routineEngine.active.done && routineEngine.active.task && <Btn ghost onClick={() => actOnRoutine(routineEngine.active, "reopen")}>Reopen</Btn>}
+                  {routineEngine.active.task && <Btn ghost onClick={() => openTask(routineEngine.active.task)}>Open details</Btn>}
+                </div>}
+              </div>
+              <div style={{ display:"grid", gap:8 }}>
+                {routineEngine.rules.map(rule => <div key={rule.title} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+rule.color, borderRadius:12, padding:11 }}><div style={{ color:rule.color, fontSize:12, fontWeight:900 }}>{rule.title}</div><div style={{ color:C.creamSoft, fontSize:11, lineHeight:1.45, marginTop:4 }}>{rule.note}</div></div>)}
+              </div>
             </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(210px, 1fr))", gap:10, marginTop:14 }}>
+              {routineEngine.byPhase.map(phase => (
+                <div key={phase.key} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+phase.color, borderRadius:14, padding:12, minWidth:0 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8 }}><div style={{ color:phase.color, fontSize:12, fontWeight:900 }}>{phase.label}</div><Badge color={phase.color}>{phase.done}/{phase.total}</Badge></div>
+                  <div style={{ color:C.muted, fontSize:11, lineHeight:1.4, margin:"6px 0 8px" }}>{phase.mission}</div>
+                  <ProgressBar value={phase.score} color={phase.color} height={6} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:10, marginTop:14 }}>
+              {routineEngine.cards.map(card => <RoutineQuickCard key={card.routine.routineKey} card={card} />)}
+            </div>
+            {routineEngine.recovery.length > 0 && <div style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+C.red, borderRadius:14, padding:12, marginTop:14 }}>
+              <div style={{ color:C.red, fontSize:12, fontWeight:900, marginBottom:8 }}>ROUTINE RECOVERY ORDER</div>
+              <div style={{ display:"grid", gap:8 }}>{routineEngine.recovery.slice(0, 4).map(card => <div key={card.routine.routineKey} style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", flexWrap:"wrap", background:C.surface, border:"1px solid "+C.border, borderRadius:10, padding:9 }}><span style={{ color:C.cream, fontSize:12, fontWeight:800 }}>{card.routine.time} · {card.routine.title}</span><span style={{ color:C.muted, fontSize:11 }}>late {card.lateByMinutes}m · score {card.formulaScore}</span>{card.task && <Btn small orange onClick={() => actOnRoutine(card, "done")}>Recover Done</Btn>}</div>)}</div>
+            </div>}
           </div>}
 
           {commandVisible("endDayReview") && <div style={{ ...PNL, minWidth:0, borderLeft:"4px solid "+(tomorrowReady ? C.green : C.gold), order:commandOrder("endDayReview") }}>
