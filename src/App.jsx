@@ -4085,6 +4085,8 @@ function CloudSyncPanel({ auth, backendNotice, backendBusy, onLogin, onRegister,
 }
 
 function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSelected, setShowNewTask, onUpdate, isPhoneLayout }) {
+  const [suiteTab, setSuiteTab] = useState("command");
+  const [boardScope, setBoardScope] = useState("all");
   const safeTasks = Array.isArray(tasks) ? tasks.map(normalizeTask) : [];
   const todayKey = localTodayISO();
   const warningDays = Number(settings?.documents?.expiryWarningDays || 30);
@@ -4092,8 +4094,7 @@ function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSe
   const docsWithStatus = docs.map(doc => ({ ...doc, statusInfo:getDocumentStatus(doc, warningDays) }));
   const riskDocs = docsWithStatus
     .filter(doc => doc.statusInfo.label === "Expired" || doc.statusInfo.label === "Expiring Soon")
-    .sort((a, b) => String(a.expiryDate || "9999-12-31").localeCompare(String(b.expiryDate || "9999-12-31")))
-    .slice(0, 5);
+    .sort((a, b) => String(a.expiryDate || "9999-12-31").localeCompare(String(b.expiryDate || "9999-12-31")));
   const moneyEntries = Array.isArray(readStore(MONEY_ENTRIES_KEY, [])) ? readStore(MONEY_ENTRIES_KEY, []) : [];
   const purchaseGoals = Array.isArray(readStore(PURCHASE_GOALS_KEY, DEFAULT_PURCHASE_GOALS)) ? readStore(PURCHASE_GOALS_KEY, DEFAULT_PURCHASE_GOALS) : [];
   const futureGoals = Array.isArray(readStore(FUTURE_GOALS_KEY, DEFAULT_FUTURE_GOALS)) ? readStore(FUTURE_GOALS_KEY, DEFAULT_FUTURE_GOALS) : [];
@@ -4110,8 +4111,9 @@ function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSe
   const doneTasks = safeTasks.filter(t => t.status === "Done");
   const todayTasks = openTasks.filter(t => t.due === todayKey || (t.isRoutine && t.routineDate === todayKey));
   const lateTasks = openTasks.filter(isLateTask).sort(compareTaskSmart);
-  const urgentTasks = openTasks.filter(t => t.priority === "Urgent" || t.priority === "High");
-  const topAction = sortTasksSmart([...todayTasks, ...lateTasks, ...urgentTasks, ...openTasks])[0] || null;
+  const urgentTasks = openTasks.filter(t => t.priority === "Urgent" || t.priority === "High").sort(compareTaskSmart);
+  const allFocusCandidates = [...todayTasks, ...lateTasks, ...urgentTasks, ...openTasks];
+  const topAction = sortTasksSmart(allFocusCandidates)[0] || null;
   const doneToday = doneTasks.filter(t => String(t.completedAt || "").startsWith(todayKey) || t.due === todayKey).length;
   const routineToday = safeTasks.filter(t => t.isRoutine && t.routineDate === todayKey);
   const routineDone = routineToday.filter(t => t.status === "Done").length;
@@ -4127,15 +4129,28 @@ function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSe
   const totalPurchaseTarget = purchaseGoals.reduce((total, goal) => total + numberValue(goal.targetAmount), 0);
   const totalFutureSaved = futureGoals.reduce((total, goal) => total + numberValue(goal.savedAmount), 0);
   const totalFutureTarget = futureGoals.reduce((total, goal) => total + numberValue(goal.targetAmount), 0);
+  const moneyNet = monthlyIncome - monthlyExpense;
   const lifeScore = Math.min(100, Math.round(
-    (routinePct * .35) +
-    (Math.min(100, doneToday * 15) * .20) +
-    ((lateTasks.length ? Math.max(0, 100 - lateTasks.length * 15) : 100) * .20) +
-    ((itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT ? 100 : Math.round((itsindaThisWeek / ITSINDA_WEEKLY_AMOUNT) * 100)) * .15) +
-    ((riskDocs.length ? Math.max(0, 100 - riskDocs.length * 18) : 100) * .10)
+    (routinePct * .28) +
+    (Math.min(100, doneToday * 16) * .18) +
+    ((lateTasks.length ? Math.max(0, 100 - lateTasks.length * 12) : 100) * .20) +
+    ((itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT ? 100 : Math.round((itsindaThisWeek / ITSINDA_WEEKLY_AMOUNT) * 100)) * .14) +
+    ((riskDocs.length ? Math.max(0, 100 - riskDocs.length * 16) : 100) * .10) +
+    ((tenderTasks.length || normalMopasTasks.length ? Math.min(100, (tenderTasks.length + normalMopasTasks.length) * 10) : 50) * .10)
   ));
-  const gridTwo = isPhoneLayout ? "1fr" : "repeat(auto-fit, minmax(280px, 1fr))";
-  const compactStats = isPhoneLayout ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fit, minmax(155px, 1fr))";
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const timeToMinutes = (time) => {
+    const [h, m] = String(time || "00:00").split(":").map(Number);
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+  };
+  const currentBlock = TODAY_DISCIPLINE_BLOCKS.find(block => nowMinutes >= timeToMinutes(block.start) && nowMinutes < timeToMinutes(block.end));
+  const nextBlock = TODAY_DISCIPLINE_BLOCKS.find(block => timeToMinutes(block.start) > nowMinutes);
+  const scoreColor = lifeScore >= 75 ? C.green : lifeScore >= 50 ? C.gold : C.red;
+  const gridTwo = isPhoneLayout ? "1fr" : "repeat(auto-fit, minmax(290px, 1fr))";
+  const gridThree = isPhoneLayout ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))";
+  const compactStats = isPhoneLayout ? "repeat(2, minmax(0, 1fr))" : "repeat(auto-fit, minmax(160px, 1fr))";
+
   const openTask = (task) => {
     if (!task) return;
     setActiveSpace(task.space || "wakeup");
@@ -4147,6 +4162,17 @@ function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSe
     setSelected(null);
     setView(nextView);
   };
+  const startTopAction = () => {
+    if (!topAction) return;
+    onUpdate({ ...topAction, status:"In Progress" });
+    openTask({ ...topAction, status:"In Progress" });
+  };
+  const recoverLateTask = () => {
+    const task = lateTasks[0];
+    if (!task) return;
+    onUpdate({ ...task, status:"In Progress", priority:task.priority === "Low" ? "Normal" : task.priority });
+    openTask({ ...task, status:"In Progress" });
+  };
   const systemCards = SPACES.map(space => {
     const spaceTasks = safeTasks.filter(t => t.space === space.id);
     const open = spaceTasks.filter(t => t.status !== "Done");
@@ -4154,32 +4180,79 @@ function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSe
     const done = spaceTasks.filter(t => t.status === "Done");
     const todayOpen = open.filter(t => t.due === todayKey || (t.isRoutine && t.routineDate === todayKey));
     const score = spaceTasks.length ? Math.round((done.length / spaceTasks.length) * 100) : 0;
-    return { ...space, total:spaceTasks.length, open:open.length, late:late.length, today:todayOpen.length, score };
+    return { ...space, total:spaceTasks.length, open:open.length, late:late.length, today:todayOpen.length, done:done.length, score };
   });
   const pipelineStages = TENDER_STAGES.map(stage => ({
     stage,
     tasks:tenderTasks.filter(t => (t.tenderStage || "New") === stage),
   }));
+  const boardTasks = sortTasksSmart(
+    boardScope === "all" ? safeTasks :
+    boardScope === "tenders" ? safeTasks.filter(isMopasTenderWork) :
+    boardScope === "mopas" ? safeTasks.filter(t => t.space === "mopas") :
+    safeTasks.filter(t => t.space === boardScope)
+  );
+  const boardColumns = STATUSES.map(status => ({ status, tasks:boardTasks.filter(t => (t.status || "To Do") === status) }));
+  const boardScopes = [
+    { id:"all", label:"All Life" },
+    { id:"mopas", label:"MOPAS" },
+    { id:"tenders", label:"Tenders" },
+    { id:"money", label:"Money" },
+    { id:"drawing", label:"Creative" },
+    { id:"health", label:"Health" },
+    { id:"afterglow", label:"Brand" },
+  ];
+  const healthMap = [
+    { label:"Command clarity", value:topAction ? 100 : 40, note:topAction ? topAction.title : "No next action selected", color:topAction ? C.green : C.orange },
+    { label:"Routine discipline", value:routinePct, note:`${routineDone}/${routineToday.length || DAILY_ROUTINES.length} routines done`, color:routinePct >= 70 ? C.green : C.gold },
+    { label:"Late recovery", value:lateTasks.length ? Math.max(0, 100 - lateTasks.length * 12) : 100, note:lateTasks.length ? `${lateTasks.length} late tasks` : "No late risk", color:lateTasks.length ? C.red : C.green },
+    { label:"Money control", value:monthlyIncome ? Math.max(0, Math.min(100, Math.round(((monthlyIncome - monthlyExpense + monthlySavings) / monthlyIncome) * 100))) : 50, note:`Month net ${rwf(moneyNet)}`, color:moneyNet >= 0 ? C.green : C.red },
+    { label:"Document safety", value:riskDocs.length ? Math.max(0, 100 - riskDocs.length * 16) : 100, note:riskDocs.length ? `${riskDocs.length} document alerts` : "Documents safe", color:riskDocs.length ? C.red : C.green },
+    { label:"Tender movement", value:tenderTasks.length ? Math.min(100, tenderTasks.length * 18) : 45, note:`${tenderTasks.length} active tender tasks`, color:tenderTasks.length ? C.blue : C.gold },
+  ];
+  const automationRules = [
+    { title:"Login gate + cloud sync", trigger:"When app opens", action:"Ask login first, then sync MongoDB tasks automatically", status:"Active", color:C.green },
+    { title:"Daily routine engine", trigger:"Every new day", action:"Generate morning, MOPAS, money, health, drawing, brand, and end-day tasks", status:settings?.routine?.autoRoutineTasks ? "Active" : "Paused", color:settings?.routine?.autoRoutineTasks ? C.green : C.orange },
+    { title:"Late task recovery", trigger:"Task deadline passed", action:"Push late work into recovery list and give it lower screen priority without hiding it", status:lateTasks.length ? "Needs action" : "Clean", color:lateTasks.length ? C.red : C.green },
+    { title:"Document risk monitor", trigger:`${warningDays} days before expiry`, action:"Show company and tender document alerts inside command center", status:riskDocs.length ? "Needs action" : "Clean", color:riskDocs.length ? C.red : C.green },
+    { title:"ITSINDA savings watch", trigger:"Every week", action:"Compare saved money with 20,000 RWF weekly target", status:itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT ? "On track" : "Pending", color:itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT ? C.green : C.gold },
+    { title:"Tender pipeline intelligence", trigger:"MOPAS tender task created", action:"Classify as tender work or normal MOPAS task and place it in the right system", status:"Active", color:C.blue },
+  ];
+  const knowledgeTemplates = [
+    { title:"Tender preparation template", tag:"MOPAS", body:"Tender summary\nDeadline\nRequired documents\nMissing documents\nTechnical proposal\nFinancial offer\nSubmission proof\nFollow-up owner" },
+    { title:"Daily operation report", tag:"Report", body:"Completed today\nPending work\nTomorrow priority\nMOPAS follow-ups\nRisks / support needed\nNotes" },
+    { title:"Creative project note", tag:"AFTERGLOW", body:"Project idea\nReference style\nStory point\nVisual test\nNext production action\nDeadline" },
+    { title:"Money decision note", tag:"Money", body:"Income today\nExpenses today\nSaving action\nPlanned purchase\nDebt / pending payment\nTomorrow money decision" },
+  ];
+  const roadmap = [
+    { phase:"Now", title:"All-in-one command suite", status:"Built in this version", color:C.green, items:["Command cockpit", "Boards", "Data hub", "Automations", "Reports", "Knowledge", "Roadmap"] },
+    { phase:"Next", title:"Real backend databases", status:"Frontend ready", color:C.gold, items:["Tenders API", "Documents API", "Money API", "Reports API", "Clients API"] },
+    { phase:"After", title:"Team collaboration", status:"Future", color:C.blue, items:["Owners", "Comments", "File attachment", "Approval flow", "Client follow-up"] },
+    { phase:"Power", title:"AI assistant inside app", status:"Future", color:C.purple, items:["Daily advice", "Tender checklist review", "Boss report draft", "Money warning", "Creative coach"] },
+  ];
 
+  const copyText = async (value) => {
+    try { await navigator.clipboard.writeText(value); } catch {}
+  };
   const ProgressBar = ({ value, color = C.orange }) => (
     <div style={{ height:8, background:C.bg, borderRadius:20, overflow:"hidden", border:"1px solid "+C.border }}>
       <div style={{ height:"100%", width:`${Math.max(0, Math.min(100, Number(value) || 0))}%`, background:color, borderRadius:20 }} />
     </div>
   );
   const MetricCard = ({ label, value, color = C.orange, sub }) => (
-    <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:isPhoneLayout ? 10 : 14, minWidth:0 }}>
-      <div style={{ color:C.creamSoft, fontSize:10, letterSpacing:1.5, fontWeight:800, textTransform:"uppercase" }}>{label}</div>
-      <div style={{ color, fontSize:isPhoneLayout ? 21 : 27, fontWeight:900, marginTop:3, lineHeight:1 }}>{value}</div>
-      {sub && <div style={{ color:C.muted, fontSize:11, marginTop:6, lineHeight:1.35 }}>{sub}</div>}
+    <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:isPhoneLayout ? 10 : 14, minWidth:0 }}>
+      <div style={{ color:C.creamSoft, fontSize:10, letterSpacing:1.5, fontWeight:900, textTransform:"uppercase" }}>{label}</div>
+      <div style={{ color, fontSize:isPhoneLayout ? 20 : 26, fontWeight:900, marginTop:4, lineHeight:1, wordBreak:"break-word" }}>{value}</div>
+      {sub && <div style={{ color:C.muted, fontSize:11, marginTop:7, lineHeight:1.35 }}>{sub}</div>}
     </div>
   );
-  const TaskMini = ({ task }) => {
+  const TaskMini = ({ task, compact = false }) => {
     const late = taskLateInfo(task);
     return (
-      <div onClick={() => openTask(task)} style={{ background:C.bg, border:"1px solid "+(late.isLate ? C.red : C.border), borderLeft:"4px solid "+(late.isLate ? C.red : priorityColor(task.priority)), borderRadius:10, padding:11, cursor:"pointer", marginBottom:8 }}>
+      <div onClick={() => openTask(task)} style={{ background:C.bg, border:"1px solid "+(late.isLate ? C.red : C.border), borderLeft:"4px solid "+(late.isLate ? C.red : priorityColor(task.priority)), borderRadius:12, padding:compact ? 9 : 11, cursor:"pointer", marginBottom:8, minWidth:0 }}>
         <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"flex-start" }}>
           <div style={{ minWidth:0, flex:1 }}>
-            <div style={{ color:late.isLate ? C.red : C.cream, fontWeight:800, fontSize:13, lineHeight:1.35, wordBreak:"break-word" }}>{task.title}</div>
+            <div style={{ color:late.isLate ? C.red : C.cream, fontWeight:900, fontSize:compact ? 12 : 13, lineHeight:1.35, wordBreak:"break-word" }}>{task.title}</div>
             <div style={{ color:C.muted, fontSize:11, marginTop:4 }}>{SPACES.find(s => s.id === task.space)?.name || task.space} · {task.due || "No deadline"}{task.time ? " · " + task.time : ""}</div>
           </div>
           <Badge color={statusColor(task.status)}>{task.status}</Badge>
@@ -4187,156 +4260,252 @@ function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSe
       </div>
     );
   };
-  const SectionTitle = ({ eyebrow, title, action }) => (
+  const SectionTitle = ({ eyebrow, title, action, sub }) => (
     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10, flexWrap:"wrap", marginBottom:12 }}>
       <div>
         <div style={{ color:C.gold, fontSize:10, letterSpacing:2, fontWeight:900, textTransform:"uppercase" }}>{eyebrow}</div>
         <div style={{ color:C.cream, fontSize:isPhoneLayout ? 17 : 20, fontWeight:900, marginTop:2 }}>{title}</div>
+        {sub && <div style={{ color:C.creamSoft, fontSize:12, marginTop:4, lineHeight:1.45 }}>{sub}</div>}
       </div>
       {action}
     </div>
   );
+  const Panel = ({ children, style }) => <div style={{ ...PNL, padding:isPhoneLayout ? 14 : 18, minWidth:0, ...style }}>{children}</div>;
+
+  const tabs = [
+    { id:"command", label:"Command" },
+    { id:"boards", label:"Boards" },
+    { id:"data", label:"Data Hub" },
+    { id:"automations", label:"Automations" },
+    { id:"reports", label:"Reports" },
+    { id:"knowledge", label:"Knowledge" },
+    { id:"roadmap", label:"Roadmap" },
+  ];
 
   return (
-    <div style={{ display:"grid", gap:isPhoneLayout ? 12 : 16, maxWidth:1500, margin:"0 auto", width:"100%" }}>
+    <div style={{ display:"grid", gap:isPhoneLayout ? 12 : 16, maxWidth:1540, margin:"0 auto", width:"100%" }}>
       <div style={{ ...PNL, padding:isPhoneLayout ? 14 : 22, background:`linear-gradient(135deg, ${C.surface}, ${C.bg})`, overflow:"hidden" }}>
-        <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "minmax(0, 1.4fr) minmax(260px, .6fr)", gap:16, alignItems:"center" }}>
+        <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "minmax(0, 1.45fr) minmax(260px, .55fr)", gap:16, alignItems:"center" }}>
           <div style={{ minWidth:0 }}>
-            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>AFTERGLOW LIFE OS V2</div>
-            <h1 style={{ margin:"6px 0 8px", color:C.cream, fontSize:isPhoneLayout ? 24 : 36, lineHeight:1.05 }}>One command system for work, money, health, learning, and your future.</h1>
-            <p style={{ margin:0, color:C.creamSoft, lineHeight:1.6, fontSize:isPhoneLayout ? 13 : 14 }}>This is the first future foundation: it combines your MOPAS operations, tenders, documents, money, creative growth, and discipline into one daily control room.</p>
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>AFTERGLOW LIFE OS COMMAND SUITE</div>
+            <h1 style={{ margin:"6px 0 8px", color:C.cream, fontSize:isPhoneLayout ? 24 : 36, lineHeight:1.05 }}>One control room for tasks, tenders, documents, money, reports, knowledge, and discipline.</h1>
+            <p style={{ margin:0, color:C.creamSoft, lineHeight:1.6, fontSize:isPhoneLayout ? 13 : 14 }}>This version changes the way the app works: instead of only opening separate sections, you now have a command suite with boards, databases, automations, reports, and a knowledge base connected to your real work.</p>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
-              <Btn orange onClick={() => setShowNewTask(true)}>+ New mission</Btn>
-              <Btn ghost onClick={() => goSpaceView("mopas", "list")}>MOPAS work</Btn>
-              <Btn ghost onClick={() => goSpaceView("money", "list")}>Money system</Btn>
-              <Btn ghost onClick={() => goSpaceView("drawing", "Goals")}>Creative goals</Btn>
+              <Btn orange onClick={startTopAction} disabled={!topAction}>{topAction ? "Start next mission" : "No mission now"}</Btn>
+              <Btn ghost onClick={() => setShowNewTask(true)}>+ Capture task</Btn>
+              <Btn ghost onClick={() => goSpaceView("mopas", "list")}>MOPAS workspace</Btn>
+              <Btn ghost onClick={() => goSpaceView("money", "list")}>Money workspace</Btn>
             </div>
           </div>
           <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:18, padding:isPhoneLayout ? 14 : 18 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, marginBottom:10 }}>
               <div>
                 <div style={{ color:C.creamSoft, fontSize:10, letterSpacing:2, fontWeight:900 }}>LIFE SCORE TODAY</div>
-                <div style={{ color:lifeScore >= 75 ? C.green : lifeScore >= 50 ? C.gold : C.red, fontSize:42, lineHeight:1, fontWeight:900 }}>{lifeScore}%</div>
+                <div style={{ color:scoreColor, fontSize:42, lineHeight:1, fontWeight:900 }}>{lifeScore}%</div>
               </div>
-              <Badge color={lifeScore >= 75 ? C.green : lifeScore >= 50 ? C.gold : C.red}>{todayKey}</Badge>
+              <Badge color={scoreColor}>{todayKey}</Badge>
             </div>
-            <ProgressBar value={lifeScore} color={lifeScore >= 75 ? C.green : lifeScore >= 50 ? C.gold : C.red} />
-            <div style={{ color:C.muted, fontSize:11, marginTop:9, lineHeight:1.5 }}>Score uses routine progress, done work, late risk, ITSINDA saving discipline, and document risk.</div>
+            <ProgressBar value={lifeScore} color={scoreColor} />
+            <div style={{ color:C.muted, fontSize:11, marginTop:9, lineHeight:1.5 }}>Score combines routines, completed work, late risk, MOPAS movement, ITSINDA savings, and document safety.</div>
           </div>
         </div>
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:compactStats, gap:10 }}>
-        <MetricCard label="Today missions" value={todayTasks.length} color={C.orange} sub={`${doneToday} completed today`} />
-        <MetricCard label="Late risk" value={lateTasks.length} color={lateTasks.length ? C.red : C.green} sub="Tasks needing recovery" />
-        <MetricCard label="Active tenders" value={tenderTasks.length} color={C.blue} sub={`${normalMopasTasks.length} normal MOPAS tasks`} />
-        <MetricCard label="Document alerts" value={riskDocs.length} color={riskDocs.length ? C.red : C.green} sub="Expired or expiring soon" />
-        <MetricCard label="ITSINDA week" value={rwf(itsindaThisWeek)} color={itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT ? C.green : C.gold} sub={`Target ${rwf(ITSINDA_WEEKLY_AMOUNT)}`} />
-        <MetricCard label="Month net" value={rwf(monthlyIncome - monthlyExpense)} color={(monthlyIncome - monthlyExpense) >= 0 ? C.green : C.red} sub={`${rwf(monthlySavings)} saved this month`} />
+      <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:2 }}>
+        {tabs.map(tab => (
+          <button key={tab.id} onClick={() => setSuiteTab(tab.id)} style={{ border:"1px solid "+(suiteTab === tab.id ? C.orange : C.border), background:suiteTab === tab.id ? C.orange+"22" : C.surface, color:suiteTab === tab.id ? C.orange : C.creamSoft, borderRadius:999, padding:"8px 13px", fontSize:12, fontWeight:900, cursor:"pointer", whiteSpace:"nowrap", flexShrink:0 }}>{tab.label}</button>
+        ))}
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:gridTwo, gap:14, alignItems:"start" }}>
-        <div style={PNL}>
-          <SectionTitle eyebrow="Do first" title="Today command action" action={<Btn small orange onClick={() => openTask(topAction)} disabled={!topAction}>Open</Btn>} />
-          {topAction ? (
-            <div>
-              <TaskMini task={topAction} />
-              <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.55, marginTop:10 }}>{topAction.goal || topAction.details || "This is the strongest next action based on priority, deadline, and current day."}</div>
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
-                {topAction.status !== "Done" && <Btn small ghost onClick={() => onUpdate({ ...topAction, status:"In Progress" })}>Start now</Btn>}
-                {topAction.status !== "Done" && <Btn small orange onClick={() => onUpdate({ ...topAction, status:"Done", locked:true, completedAt:new Date().toISOString() })}>Mark done</Btn>}
-              </div>
-            </div>
-          ) : <div style={{ color:C.muted, textAlign:"center", padding:28 }}>No open mission. Create one important action for today.</div>}
-        </div>
-
-        <div style={PNL}>
-          <SectionTitle eyebrow="Recovery" title="Late and blocked work" action={<Btn small ghost onClick={() => setView("list")}>Open list</Btn>} />
-          {!lateTasks.length ? <div style={{ color:C.green, fontWeight:800, padding:18, background:C.bg, border:"1px solid "+C.border, borderRadius:10 }}>No late task right now. Protect this.</div> : lateTasks.slice(0, 5).map(task => <TaskMini key={task.id} task={task} />)}
-        </div>
-      </div>
-
-      <div style={PNL}>
-        <SectionTitle eyebrow="System map" title="Your life workspaces" action={<Btn small ghost onClick={() => setView("dashboard")}>Command Center</Btn>} />
-        <div style={{ display:"grid", gridTemplateColumns:gridTwo, gap:10 }}>
-          {systemCards.map(space => (
-            <div key={space.id} onClick={() => goSpaceView(space.id, "list")} style={{ background:C.bg, border:"1px solid "+(space.late ? C.red : C.border), borderLeft:"5px solid "+space.color, borderRadius:12, padding:13, cursor:"pointer" }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
-                <div style={{ minWidth:0 }}>
-                  <div style={{ color:space.color, fontWeight:900, fontSize:14 }}>{space.name}</div>
-                  <div style={{ color:C.muted, fontSize:11, marginTop:3 }}>{space.open} open · {space.today} today · {space.late} late</div>
+      {suiteTab === "command" && (
+        <>
+          <div style={{ display:"grid", gridTemplateColumns:compactStats, gap:10 }}>
+            <MetricCard label="Today missions" value={todayTasks.length} color={C.orange} sub={`${doneToday} completed today`} />
+            <MetricCard label="Late risk" value={lateTasks.length} color={lateTasks.length ? C.red : C.green} sub="Tasks needing recovery" />
+            <MetricCard label="Active tenders" value={tenderTasks.length} color={C.blue} sub={`${normalMopasTasks.length} normal MOPAS tasks`} />
+            <MetricCard label="Document alerts" value={riskDocs.length} color={riskDocs.length ? C.red : C.green} sub="Expired or expiring soon" />
+            <MetricCard label="ITSINDA week" value={rwf(itsindaThisWeek)} color={itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT ? C.green : C.gold} sub={`Target ${rwf(ITSINDA_WEEKLY_AMOUNT)}`} />
+            <MetricCard label="Month net" value={rwf(moneyNet)} color={moneyNet >= 0 ? C.green : C.red} sub={`${rwf(monthlySavings)} saved this month`} />
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:gridTwo, gap:14 }}>
+            <Panel style={{ borderColor:topAction ? C.orange : C.border }}>
+              <SectionTitle eyebrow="Now" title="Next best action" sub={currentBlock ? `Current block: ${currentBlock.start}-${currentBlock.end} · ${currentBlock.title}` : "Outside the fixed discipline blocks."} action={<Btn small orange onClick={startTopAction} disabled={!topAction}>Start</Btn>} />
+              {topAction ? <TaskMini task={topAction} /> : <div style={{ color:C.creamSoft, fontSize:13 }}>No action found. Capture the next task or open a workspace.</div>}
+              {nextBlock && <div style={{ marginTop:10, color:C.muted, fontSize:12 }}>Next block: <strong style={{ color:C.cream }}>{nextBlock.start}-{nextBlock.end}</strong> · {nextBlock.title}</div>}
+            </Panel>
+            <Panel>
+              <SectionTitle eyebrow="Recovery" title="Late task control" action={<Btn small ghost onClick={recoverLateTask} disabled={!lateTasks.length}>Recover first</Btn>} />
+              {lateTasks.slice(0, 4).map(task => <TaskMini key={task.id} task={task} compact />)}
+              {!lateTasks.length && <div style={{ color:C.green, fontWeight:800 }}>Clean. No late task right now.</div>}
+            </Panel>
+          </div>
+          <Panel>
+            <SectionTitle eyebrow="Health map" title="System health" sub="This works like a dashboard: you see the weak area first, then act." />
+            <div style={{ display:"grid", gridTemplateColumns:gridThree, gap:10 }}>
+              {healthMap.map(item => (
+                <div key={item.label} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", gap:10, marginBottom:8 }}><strong style={{ color:C.cream, fontSize:13 }}>{item.label}</strong><span style={{ color:item.color, fontWeight:900 }}>{Math.round(item.value)}%</span></div>
+                  <ProgressBar value={item.value} color={item.color} />
+                  <div style={{ color:C.muted, fontSize:11, marginTop:7 }}>{item.note}</div>
                 </div>
-                <Badge color={space.late ? C.red : C.green}>{space.score}%</Badge>
-              </div>
-              <div style={{ marginTop:10 }}><ProgressBar value={space.score} color={space.color} /></div>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:gridTwo, gap:14, alignItems:"start" }}>
-        <div style={PNL}>
-          <SectionTitle eyebrow="MOPAS pipeline" title="Tender movement" action={<Btn small ghost onClick={() => goSpaceView("mopas", "list")}>Open MOPAS</Btn>} />
-          <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "repeat(auto-fit, minmax(135px, 1fr))", gap:8 }}>
-            {pipelineStages.map(stage => (
-              <div key={stage.stage} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10, minHeight:86 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", gap:6, marginBottom:8 }}>
-                  <div style={{ color:C.cream, fontWeight:900, fontSize:12 }}>{stage.stage}</div>
-                  <Badge color={stage.tasks.length ? C.orange : C.muted}>{stage.tasks.length}</Badge>
+          </Panel>
+          <Panel>
+            <SectionTitle eyebrow="Workspaces" title="Your life as connected systems" />
+            <div style={{ display:"grid", gridTemplateColumns:gridThree, gap:10 }}>
+              {systemCards.map(card => (
+                <div key={card.id} onClick={() => goSpaceView(card.id, "list")} style={{ background:C.bg, border:"1px solid "+(card.late ? C.red : C.border), borderTop:"4px solid "+card.color, borderRadius:14, padding:13, cursor:"pointer" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}><strong style={{ color:C.cream }}>{card.name}</strong><Badge color={card.late ? C.red : card.color}>{card.open} open</Badge></div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:6, marginTop:12, color:C.creamSoft, fontSize:11 }}>
+                    <div>Today<br /><strong style={{ color:C.cream }}>{card.today}</strong></div>
+                    <div>Late<br /><strong style={{ color:card.late ? C.red : C.green }}>{card.late}</strong></div>
+                    <div>Done<br /><strong style={{ color:C.green }}>{card.done}</strong></div>
+                  </div>
+                  <div style={{ marginTop:10 }}><ProgressBar value={card.score} color={card.color} /></div>
                 </div>
-                {stage.tasks.slice(0, 2).map(task => <div key={task.id} onClick={() => openTask(task)} style={{ color:C.creamSoft, fontSize:11, lineHeight:1.35, marginBottom:6, cursor:"pointer" }}>• {task.title}</div>)}
+              ))}
+            </div>
+          </Panel>
+        </>
+      )}
+
+      {suiteTab === "boards" && (
+        <Panel>
+          <SectionTitle eyebrow="Boards" title="Monday / Trello style board system" sub="Move work mentally from To Do to In Progress to Done. Click any card to open the real task detail." action={<Btn small orange onClick={() => setShowNewTask(true)}>+ New card</Btn>} />
+          <div style={{ display:"flex", gap:8, overflowX:"auto", marginBottom:12 }}>
+            {boardScopes.map(scope => <button key={scope.id} onClick={() => setBoardScope(scope.id)} style={{ border:"1px solid "+(boardScope === scope.id ? C.orange : C.border), background:boardScope === scope.id ? C.orange+"22" : C.bg, color:boardScope === scope.id ? C.orange : C.creamSoft, borderRadius:999, padding:"7px 12px", fontSize:12, fontWeight:900, cursor:"pointer", whiteSpace:"nowrap" }}>{scope.label}</button>)}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "repeat(4, minmax(220px, 1fr))", gap:10, alignItems:"start" }}>
+            {boardColumns.map(col => (
+              <div key={col.status} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:10, minHeight:120 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}><strong style={{ color:statusColor(col.status) }}>{col.status}</strong><Badge color={statusColor(col.status)}>{col.tasks.length}</Badge></div>
+                {col.tasks.slice(0, 10).map(task => <TaskMini key={task.id} task={task} compact />)}
+                {!col.tasks.length && <div style={{ color:C.muted, fontSize:12 }}>No cards</div>}
               </div>
             ))}
           </div>
-        </div>
+        </Panel>
+      )}
 
-        <div style={PNL}>
-          <SectionTitle eyebrow="Documents" title="Risk control" action={<Btn small ghost onClick={() => goSpaceView("mopas", "documents")}>Open documents</Btn>} />
-          {!riskDocs.length ? <div style={{ color:C.green, fontWeight:800, padding:18, background:C.bg, border:"1px solid "+C.border, borderRadius:10 }}>No expired or urgent document alert.</div> : riskDocs.map(doc => (
-            <div key={doc.id} style={{ background:C.bg, border:"1px solid "+(doc.statusInfo.label === "Expired" ? C.red : C.border), borderLeft:"4px solid "+doc.statusInfo.color, borderRadius:10, padding:11, marginBottom:8 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"flex-start" }}>
-                <div style={{ color:C.cream, fontWeight:800, fontSize:13, lineHeight:1.35 }}>{doc.title}</div>
-                <Badge color={doc.statusInfo.color}>{doc.statusInfo.label}</Badge>
+      {suiteTab === "data" && (
+        <div style={{ display:"grid", gridTemplateColumns:gridTwo, gap:14 }}>
+          <Panel>
+            <SectionTitle eyebrow="Airtable style" title="Tender database" action={<Btn small ghost onClick={() => goSpaceView("mopas", "list")}>Open MOPAS</Btn>} />
+            {pipelineStages.map(stage => (
+              <div key={stage.stage} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10, marginBottom:8 }}>
+                <span style={{ color:C.cream, fontWeight:800 }}>{stage.stage}</span><Badge color={stage.tasks.length ? C.blue : C.muted}>{stage.tasks.length} items</Badge>
               </div>
-              <div style={{ color:C.muted, fontSize:11, marginTop:5 }}>Expiry: {doc.expiryDate || "-"}</div>
+            ))}
+          </Panel>
+          <Panel>
+            <SectionTitle eyebrow="Document system" title="Risk database" action={<Btn small ghost onClick={() => goSpaceView("mopas", "documents")}>Open documents</Btn>} />
+            {riskDocs.slice(0, 6).map(doc => (
+              <div key={doc.id || doc.name} style={{ background:C.bg, border:"1px solid "+(doc.statusInfo.label === "Expired" ? C.red : C.orange), borderRadius:10, padding:10, marginBottom:8 }}>
+                <div style={{ color:C.cream, fontWeight:800 }}>{doc.name || doc.title || "Document"}</div>
+                <div style={{ color:C.muted, fontSize:12 }}>{doc.category || "Document"} · {doc.expiryDate || "No date"} · {doc.statusInfo.label}</div>
+              </div>
+            ))}
+            {!riskDocs.length && <div style={{ color:C.green, fontWeight:800 }}>No document risk right now.</div>}
+          </Panel>
+          <Panel>
+            <SectionTitle eyebrow="Money database" title="Financial control" action={<Btn small ghost onClick={() => goSpaceView("money", "list")}>Open money</Btn>} />
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:8 }}>
+              <MetricCard label="Today income" value={rwf(todayIncome)} color={C.green} />
+              <MetricCard label="Today expense" value={rwf(todayExpense)} color={todayExpense ? C.red : C.green} />
+              <MetricCard label="Purchase saved" value={rwf(totalPurchaseSaved)} color={C.gold} sub={totalPurchaseTarget ? `Target ${rwf(totalPurchaseTarget)}` : "Set targets"} />
+              <MetricCard label="Future saved" value={rwf(totalFutureSaved)} color={C.purple} sub={totalFutureTarget ? `Target ${rwf(totalFutureTarget)}` : "Set targets"} />
             </div>
-          ))}
+          </Panel>
+          <Panel>
+            <SectionTitle eyebrow="Goals database" title="Life goals + project goals" action={<Btn small ghost onClick={() => goSpaceView("drawing", "Goals")}>Open goals</Btn>} />
+            {[...purchaseGoals.slice(0, 3), ...futureGoals.slice(0, 3)].map(goal => (
+              <div key={goal.id || goal.title} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10, marginBottom:8 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}><strong style={{ color:C.cream }}>{goal.title}</strong><span style={{ color:C.gold, fontSize:12 }}>{moneyProgress(goal.savedAmount, goal.targetAmount)}%</span></div>
+                <div style={{ marginTop:6 }}><ProgressBar value={moneyProgress(goal.savedAmount, goal.targetAmount)} color={C.gold} /></div>
+              </div>
+            ))}
+          </Panel>
         </div>
-      </div>
+      )}
 
-      <div style={{ display:"grid", gridTemplateColumns:gridTwo, gap:14, alignItems:"start" }}>
-        <div style={PNL}>
-          <SectionTitle eyebrow="Money" title="Financial direction" action={<Btn small ghost onClick={() => goSpaceView("money", "list")}>Open money</Btn>} />
-          <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "repeat(3, 1fr)", gap:8, marginBottom:12 }}>
-            <MetricCard label="Today income" value={rwf(todayIncome)} color={C.green} />
-            <MetricCard label="Today expense" value={rwf(todayExpense)} color={todayExpense ? C.red : C.green} />
-            <MetricCard label="Month saved" value={rwf(monthlySavings)} color={C.gold} />
+      {suiteTab === "automations" && (
+        <Panel>
+          <SectionTitle eyebrow="Automation lab" title="Rules that make the app work for you" sub="This is the beginning of a real automation system. Some rules already run; others are shown as the next backend upgrade." />
+          <div style={{ display:"grid", gridTemplateColumns:gridTwo, gap:10 }}>
+            {automationRules.map(rule => (
+              <div key={rule.title} style={{ background:C.bg, border:"1px solid "+rule.color, borderRadius:14, padding:13 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:8, marginBottom:8 }}><strong style={{ color:C.cream }}>{rule.title}</strong><Badge color={rule.color}>{rule.status}</Badge></div>
+                <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5 }}><strong>Trigger:</strong> {rule.trigger}<br /><strong>Action:</strong> {rule.action}</div>
+              </div>
+            ))}
           </div>
-          <div style={{ display:"grid", gap:10 }}>
-            <div>
-              <div style={{ display:"flex", justifyContent:"space-between", color:C.creamSoft, fontSize:12, marginBottom:5 }}><span>Planned purchases</span><span>{moneyProgress(totalPurchaseSaved, totalPurchaseTarget)}%</span></div>
-              <ProgressBar value={moneyProgress(totalPurchaseSaved, totalPurchaseTarget)} color={C.gold} />
-            </div>
-            <div>
-              <div style={{ display:"flex", justifyContent:"space-between", color:C.creamSoft, fontSize:12, marginBottom:5 }}><span>Future goals</span><span>{moneyProgress(totalFutureSaved, totalFutureTarget)}%</span></div>
-              <ProgressBar value={moneyProgress(totalFutureSaved, totalFutureTarget)} color={C.orange} />
-            </div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
+            <Btn orange onClick={startTopAction} disabled={!topAction}>Start next action</Btn>
+            <Btn ghost onClick={recoverLateTask} disabled={!lateTasks.length}>Recover late task</Btn>
+            <Btn ghost onClick={() => setShowNewTask(true)}>Capture new task</Btn>
           </div>
-        </div>
+        </Panel>
+      )}
 
-        <div style={PNL}>
-          <SectionTitle eyebrow="Next build" title="Future modules to unlock" />
-          {["Client CRM for MOPAS contacts and follow-up", "Quotation database connected to projects and reports", "Knowledge base for tender templates and company documents", "AI daily coach that recommends the strongest next action", "Phone-first quick capture for tasks, expense, document, and idea"].map((item, index) => (
-            <div key={item} style={{ display:"flex", gap:10, alignItems:"flex-start", background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10, marginBottom:8 }}>
-              <Badge color={index === 0 ? C.orange : C.blue}>{index + 1}</Badge>
-              <div style={{ color:C.creamSoft, fontSize:13, lineHeight:1.4 }}>{item}</div>
+      {suiteTab === "reports" && (
+        <div style={{ display:"grid", gridTemplateColumns:gridTwo, gap:14 }}>
+          <Panel>
+            <SectionTitle eyebrow="Smartsheet style" title="Management report snapshot" />
+            <div style={{ color:C.creamSoft, fontSize:13, lineHeight:1.8 }}>
+              <strong style={{ color:C.cream }}>Today:</strong> {todayTasks.length} active missions, {doneToday} completed.<br />
+              <strong style={{ color:C.cream }}>MOPAS:</strong> {tenderTasks.length} tender tasks and {normalMopasTasks.length} normal tasks.<br />
+              <strong style={{ color:C.cream }}>Risk:</strong> {lateTasks.length} late tasks, {riskDocs.length} document alerts.<br />
+              <strong style={{ color:C.cream }}>Money:</strong> Month net is {rwf(moneyNet)} and ITSINDA week is {rwf(itsindaThisWeek)}.
             </div>
-          ))}
+          </Panel>
+          <Panel>
+            <SectionTitle eyebrow="Boss-ready" title="What to report" action={<Btn small ghost onClick={() => goSpaceView("mopas", "daily report")}>Open daily report</Btn>} />
+            <ul style={{ margin:0, paddingLeft:18, color:C.creamSoft, lineHeight:1.7, fontSize:13 }}>
+              <li>Completed tasks: use Done list and daily report.</li>
+              <li>Pending: use Late risk and Today missions.</li>
+              <li>Tenders: use pipeline and MOPAS board.</li>
+              <li>Documents: use document risk database.</li>
+              <li>Tomorrow: use Command tab and End Day Review.</li>
+            </ul>
+          </Panel>
         </div>
-      </div>
+      )}
+
+      {suiteTab === "knowledge" && (
+        <Panel>
+          <SectionTitle eyebrow="Notion style" title="Knowledge base and reusable templates" sub="This gives you clean notes for tenders, reports, creative work, and money decisions." />
+          <div style={{ display:"grid", gridTemplateColumns:gridTwo, gap:10 }}>
+            {knowledgeTemplates.map(template => (
+              <div key={template.title} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:13 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:8, marginBottom:8 }}><strong style={{ color:C.cream }}>{template.title}</strong><Badge color={C.gold}>{template.tag}</Badge></div>
+                <pre style={{ margin:0, whiteSpace:"pre-wrap", color:C.creamSoft, fontFamily:"inherit", fontSize:12, lineHeight:1.5 }}>{template.body}</pre>
+                <Btn small ghost onClick={() => copyText(template.body)} style={{ marginTop:10 }}>Copy template</Btn>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {suiteTab === "roadmap" && (
+        <Panel>
+          <SectionTitle eyebrow="Linear style" title="AFTERGLOW product roadmap" sub="This is the direction from workspace to serious life/company operating system." />
+          <div style={{ display:"grid", gridTemplateColumns:gridTwo, gap:10 }}>
+            {roadmap.map(item => (
+              <div key={item.title} style={{ background:C.bg, border:"1px solid "+item.color, borderRadius:14, padding:13 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:8, marginBottom:8 }}><div><div style={{ color:item.color, fontSize:11, letterSpacing:2, fontWeight:900 }}>{item.phase}</div><strong style={{ color:C.cream }}>{item.title}</strong></div><Badge color={item.color}>{item.status}</Badge></div>
+                <ul style={{ margin:"8px 0 0", paddingLeft:18, color:C.creamSoft, fontSize:12, lineHeight:1.6 }}>
+                  {item.items.map(x => <li key={x}>{x}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }
+
 
 function AfterglowApp() {
   const [tasks, setTasks] = useState(() => {
@@ -4800,7 +4969,7 @@ function AfterglowApp() {
           </div>
           <div onClick={() => { setView("life os"); setSelected(null); if (isMobileLayout) setSidebarOpen(false); }}
             style={{ padding:"10px 14px", borderRadius:8, cursor:"pointer", marginBottom:4, background: view === "life os" ? C.elevated : "transparent", color: view === "life os" ? C.gold : C.cream, fontWeight:900, fontSize:13, borderLeft: view === "life os" ? "3px solid "+C.gold : "3px solid transparent" }}>
-            ▣ Life OS Future
+            ▣ Life OS Command Suite
           </div>
         </div>
         <div style={{ padding:"4px 18px", flex:1, overflowY:"auto" }}>
@@ -4832,7 +5001,7 @@ function AfterglowApp() {
           <div style={{ display:"flex", alignItems:"center", gap:9 }}>
             <span onClick={() => setSidebarOpen(o => !o)} style={{ cursor:"pointer", fontSize:20, color:C.creamSoft }}>{"\u2630"}</span>
             <div>
-              <div style={{ fontWeight:700, fontSize:isPhoneLayout ? 14 : 16, maxWidth:isPhoneLayout ? 230 : "none", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{view === "dashboard" ? (safeSettings.appearance.dashboardLabel || "Command Center") : view === "life os" ? "AFTERGLOW Life OS" : view === "settings" ? "Settings" : sp.name}</div>
+              <div style={{ fontWeight:700, fontSize:isPhoneLayout ? 14 : 16, maxWidth:isPhoneLayout ? 230 : "none", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{view === "dashboard" ? (safeSettings.appearance.dashboardLabel || "Command Center") : view === "life os" ? "AFTERGLOW Life OS Command Suite" : view === "settings" ? "Settings" : sp.name}</div>
             </div>
           </div>
           <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:isPhoneLayout ? "nowrap" : "wrap", overflowX:isPhoneLayout ? "auto" : "visible", maxWidth:isPhoneLayout ? "100%" : undefined, width:isPhoneLayout ? "100%" : undefined, paddingBottom:isPhoneLayout ? 2 : 0 }}>
