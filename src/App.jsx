@@ -4084,7 +4084,6 @@ function CloudSyncPanel({ auth, backendNotice, backendBusy, onLogin, onRegister,
   );
 }
 
-
 function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSelected, setShowNewTask, onUpdate, isPhoneLayout }) {
   const safeTasks = Array.isArray(tasks) ? tasks.map(normalizeTask) : [];
   const todayKey = localTodayISO();
@@ -4843,13 +4842,13 @@ function AfterglowApp() {
               </span>
             ))}
 
-            <Btn ghost small={isPhoneLayout} onClick={() => sendTodayDisciplineEmail({ manual:true })}>Email Current Action</Btn>
-            <Btn ghost small={isPhoneLayout} onClick={exportBackup}>Export Backup</Btn>
-            <label style={{ padding:isPhoneLayout ? "4px 12px" : "8px 18px", borderRadius:8, border:"1px solid "+C.border, cursor:"pointer", background:"transparent", color:C.cream, fontSize:isPhoneLayout ? 12 : 13, fontWeight:600 }}>
+            <Btn ghost onClick={() => sendTodayDisciplineEmail({ manual:true })}>Email Current Action</Btn>
+            <Btn ghost onClick={exportBackup}>Export Backup</Btn>
+            <label style={{ padding:"8px 18px", borderRadius:8, border:"1px solid "+C.border, cursor:"pointer", background:"transparent", color:C.cream, fontSize:13, fontWeight:600 }}>
               Import Backup
               <input type="file" accept="application/json,.json" onChange={importBackup} style={{ display:"none" }} />
             </label>
-            <Btn orange small={isPhoneLayout} onClick={() => setShowNewTask(true)}>+ New task</Btn>
+            <Btn orange onClick={() => setShowNewTask(true)}>+ New task</Btn>
           </div>
         </header>
 
