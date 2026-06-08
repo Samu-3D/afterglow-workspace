@@ -5328,6 +5328,37 @@ function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSe
 }
 
 
+
+class SafeViewBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError:false, message:"" };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError:true, message:String(error && error.message ? error.message : error || "Unknown view error") };
+  }
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
+      this.setState({ hasError:false, message:"" });
+    }
+  }
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div style={{ background:C.surface, border:"1px solid "+C.red, borderRadius:16, padding:22, color:C.cream, maxWidth:760, margin:"20px auto" }}>
+        <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>VIEW RECOVERY</div>
+        <h2 style={{ margin:"8px 0", color:C.cream }}>This section was protected from breaking the whole app.</h2>
+        <div style={{ color:C.creamSoft, lineHeight:1.6 }}>Go to another section, reload, or reset settings. Your tasks and cloud data are safe.</div>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:12, marginTop:12, color:C.red, fontSize:12, wordBreak:"break-word" }}>{this.state.message}</div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
+          <button onClick={() => window.location.reload()} style={{ padding:"8px 14px", borderRadius:8, border:"none", background:C.orange, color:"#fff", fontWeight:800, cursor:"pointer" }}>Reload</button>
+          <button onClick={() => { try { window.localStorage.removeItem(APP_SETTINGS_KEY); } catch {} window.location.reload(); }} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid "+C.border, background:"transparent", color:C.cream, fontWeight:800, cursor:"pointer" }}>Reset settings only</button>
+        </div>
+      </div>
+    );
+  }
+}
+
 function AfterglowApp() {
   const [tasks, setTasks] = useState(() => {
     const stored = load();
@@ -5869,6 +5900,7 @@ function AfterglowApp() {
         )}
 
         <div style={{ flex:1, overflow:"auto", padding:isPhoneLayout ? 10 : isMobileLayout ? 14 : 20, minWidth:0 }}>
+          <SafeViewBoundary resetKey={`${view}-${activeSpace}`}>
           {view === "dashboard" ? (
             <AfterglowCommandHubV3 tasks={tasks} activeSpace={activeSpace} settings={safeSettings} goSpace={goSpace} setView={setView} setActiveSpace={setActiveSpace} setSelected={setSelected} setShowNewTask={setShowNewTask} setShowEndDayReview={setShowEndDayReview} onUpdate={updateTask} isPhoneLayout={isPhoneLayout} sendTodayDisciplineEmail={sendTodayDisciplineEmail} />
           ) : view === "boards" ? (
@@ -5902,6 +5934,7 @@ function AfterglowApp() {
               {view === "list" && <TaskDetail task={selected} onUpdate={updateTask} onDelete={deleteTask} />}
             </div>
           )}
+          </SafeViewBoundary>
         </div>
       </main>
 
