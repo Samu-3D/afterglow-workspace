@@ -3181,114 +3181,221 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
   );
 }
 
-function ListView({ tasks, activeSpace, selected, setSelected, onUpdate, settings }) {
-  const ordered = useMemo(() => sortTasksSmart(tasks), [tasks]);
-  const doneCount = useMemo(() => tasks.filter(t => t.status === "Done").length, [tasks]);
-  const lateCount = useMemo(() => tasks.filter(isLateTask).length, [tasks]);
+function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, settings }) {
+  const safeTasks = Array.isArray(tasks) ? tasks.map(normalizeTask) : [];
   const [collapsedSections, setCollapsedSections] = useState(() => readStore(TASK_CATEGORY_COLLAPSE_KEY, {}));
+  const [taskSearch, setTaskSearch] = useState("");
+  const [taskLens, setTaskLens] = useState("mission");
 
   useEffect(() => { writeStore(TASK_CATEGORY_COLLAPSE_KEY, collapsedSections); }, [collapsedSections]);
 
-  const taskSections = useMemo(() => {
-    const late = sortTasksSmart(ordered.filter(t => t.status !== "Done" && isLateTask(t)));
-    const inProgress = sortTasksSmart(ordered.filter(t => t.status === "In Progress" && !isLateTask(t)));
-    const active = sortTasksSmart(ordered.filter(t => t.status !== "Done" && t.status !== "In Progress" && !isLateTask(t) && isDateKey(t.due)));
-    const undone = sortTasksSmart(ordered.filter(t => t.status !== "Done" && t.status !== "In Progress" && !isLateTask(t) && !isDateKey(t.due)));
-    const completed = sortTasksSmart(ordered.filter(t => t.status === "Done"));
-    return [
-      { key:"active", title:"ACTIVE TASKS", subtitle:"Open tasks with a deadline today or in the future.", items:active, color:C.blue, empty:"No active deadline task." },
-      { key:"progress", title:"IN PROGRESS", subtitle:"Started tasks that are not late yet.", items:inProgress, color:C.orange, empty:"No task in progress." },
-      { key:"late", title:"LATE TASKS", subtitle:"Deadline passed and the task is not done.", items:late, color:C.red, empty:"No late task." },
-      { key:"undone", title:"UNDONE TASKS", subtitle:"Open tasks without a deadline.", items:undone, color:C.gold, empty:"No undone task without deadline." },
-      { key:"done", title:"DONE TASKS", subtitle:"Completed tasks are always visible, locked, and at the bottom.", items:completed, color:C.green, empty:"No completed task yet." },
+  const todayKey = localTodayISO();
+  const currentSpace = SPACES.find(s => s.id === activeSpace) || SPACES[0];
+
+  const scoreTask = useCallback((task = {}) => {
+    const t = normalizeTask(task);
+    let score = 10;
+    if (t.status === "Done") score -= 80;
+    if (t.status === "In Progress") score += 28;
+    if (t.priority === "Urgent") score += 38;
+    if (t.priority === "High") score += 24;
+    if (t.priority === "Normal") score += 10;
+    if (isLateTask(t)) score += 45;
+    if (isDateKey(t.due)) {
+      const diff = daysBetweenLocal(todayKey, t.due);
+      if (diff === 0) score += 35;
+      else if (diff === 1) score += 22;
+      else if (diff !== null && diff > 1 && diff <= 7) score += Math.max(4, 16 - diff);
+      else if (diff !== null && diff < 0) score += Math.min(40, Math.abs(diff) * 5);
+    }
+    if (t.time) score += 5;
+    if (t.isRoutine && t.routineDate === todayKey) score += 18;
+    if (t.space === "mopas") score += 6;
+    if (isMopasTenderWork(t)) score += 12;
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }, [todayKey]);
+
+  const dueInfo = useCallback((task = {}) => {
+    if (!isDateKey(task.due)) return { label:"No deadline", color:C.muted, diff:null };
+    const late = taskLateInfo(task);
+    if (late.isLate) return { label:late.label, color:C.red, diff:daysBetweenLocal(todayKey, task.due) };
+    const diff = daysBetweenLocal(todayKey, task.due);
+    if (diff === 0) return { label:"Today", color:C.orange, diff };
+    if (diff === 1) return { label:"Tomorrow", color:C.blue, diff };
+    if (diff !== null && diff > 1 && diff <= 7) return { label:`In ${diff} days`, color:C.gold, diff };
+    return { label:task.due, color:C.creamSoft, diff };
+  }, [todayKey]);
+
+  const ordered = useMemo(() => {
+    const query = safeLower(taskSearch).trim();
+    const filtered = query ? safeTasks.filter(task => getTaskSearchText(task).includes(query)) : safeTasks;
+    return [...filtered].sort((a, b) => {
+      const scoreDiff = scoreTask(b) - scoreTask(a);
+      if (scoreDiff) return scoreDiff;
+      return compareTaskSmart(a, b);
+    });
+  }, [safeTasks, taskSearch, scoreTask]);
+
+  const metrics = useMemo(() => {
+    const open = ordered.filter(t => t.status !== "Done");
+    const done = ordered.filter(t => t.status === "Done");
+    const late = open.filter(isLateTask);
+    const today = open.filter(t => t.due === todayKey || (t.isRoutine && t.routineDate === todayKey));
+    const inProgress = open.filter(t => t.status === "In Progress");
+    const highImpact = open.filter(t => scoreTask(t) >= 70);
+    const nextMission = highImpact[0] || open[0] || null;
+    const donePct = ordered.length ? Math.round((done.length / ordered.length) * 100) : 0;
+    return { open, done, late, today, inProgress, highImpact, nextMission, donePct };
+  }, [ordered, todayKey, scoreTask]);
+
+  const filteredSections = useMemo(() => {
+    const open = ordered.filter(t => t.status !== "Done");
+    const done = ordered.filter(t => t.status === "Done");
+    const next = metrics.nextMission ? [metrics.nextMission] : [];
+    const nextId = metrics.nextMission?.id;
+    const routine = open.filter(t => t.id !== nextId && t.isRoutine && (t.routineDate === todayKey || t.due === todayKey));
+    const progress = open.filter(t => t.id !== nextId && t.status === "In Progress" && !isLateTask(t));
+    const recovery = open.filter(t => t.id !== nextId && isLateTask(t));
+    const thisWeek = open.filter(t => {
+      if (t.id === nextId || t.isRoutine || t.status === "In Progress" || isLateTask(t)) return false;
+      if (!isDateKey(t.due)) return false;
+      const diff = daysBetweenLocal(todayKey, t.due);
+      return diff !== null && diff >= 0 && diff <= 7;
+    });
+    const backlog = open.filter(t => {
+      if (t.id === nextId || t.isRoutine || t.status === "In Progress" || isLateTask(t)) return false;
+      if (!isDateKey(t.due)) return true;
+      const diff = daysBetweenLocal(todayKey, t.due);
+      return diff === null || diff > 7;
+    });
+    const allSections = [
+      { key:"next", title:"NEXT MISSION", subtitle:"The highest-impact task according to priority, deadline, status, and routine timing.", items:next, color:C.orange, empty:"No open mission. Add a task or sync from cloud." },
+      { key:"routine", title:"ROUTINE ENGINE", subtitle:"Daily discipline tasks due today. These keep your system alive.", items:routine, color:C.gold, empty:"No routine task due today." },
+      { key:"progress", title:"IN PROGRESS", subtitle:"Tasks already started. Finish or update them before opening too many new actions.", items:progress, color:C.blue, empty:"No task is currently in progress." },
+      { key:"recovery", title:"RECOVERY QUEUE", subtitle:"Late tasks are separated so they stop silently destroying the day.", items:recovery, color:C.red, empty:"No late task in this space." },
+      { key:"week", title:"THIS WEEK", subtitle:"Upcoming tasks within seven days.", items:thisWeek, color:C.purple, empty:"No task due this week." },
+      { key:"backlog", title:"BACKLOG / PARKING", subtitle:"Useful tasks without urgent timing. Review when planning.", items:backlog, color:C.muted, empty:"No backlog item." },
+      { key:"proof", title:"DONE / PROOF", subtitle:"Completed work stays visible as proof of progress.", items:done, color:C.green, empty:"No completed task yet." },
     ];
-  }, [ordered]);
+    if (taskLens === "mission") return allSections;
+    if (taskLens === "routine") return allSections.filter(s => ["next", "routine", "proof"].includes(s.key));
+    if (taskLens === "recovery") return allSections.filter(s => ["next", "recovery", "progress", "proof"].includes(s.key));
+    if (taskLens === "work") return allSections.filter(s => ["next", "progress", "week", "backlog", "proof"].includes(s.key));
+    return allSections;
+  }, [ordered, metrics.nextMission, todayKey, taskLens]);
 
-  const dueLabel = (t) => {
-    if (!isDateKey(t.due)) return { label:"No deadline", color:C.muted };
-    const late = taskLateInfo(t);
-    if (late.isLate) return { label:late.label, color:C.red };
-    const diff = daysBetweenLocal(localTodayISO(), t.due);
-    if (diff === 0) return { label:"Today", color:C.orange };
-    if (diff === 1) return { label:"Tomorrow", color:C.blue };
-    return { label:t.due, color:C.creamSoft };
-  };
-
+  const markDone = (task) => onUpdate({ ...task, status:"Done", locked:true, completedAt:new Date().toISOString() });
+  const startTask = (task) => onUpdate({ ...task, status:"In Progress" });
+  const moveTomorrow = (task) => onUpdate({ ...task, due:addDaysISO(todayKey, 1), status:task.status === "Done" ? "To Do" : task.status });
+  const reopenTask = (task) => onUpdate({ ...task, status:"To Do", locked:false, completedAt:"" });
   const toggleSection = (key) => setCollapsedSections(prev => ({ ...(prev || {}), [key]:!prev?.[key] }));
-  const collapseAll = () => setCollapsedSections(taskSections.reduce((acc, section) => ({ ...acc, [section.key]:true }), {}));
+  const collapseAll = () => setCollapsedSections(filteredSections.reduce((acc, section) => ({ ...acc, [section.key]:true }), {}));
   const expandAll = () => setCollapsedSections({});
 
-  const renderTaskRow = (t) => {
-    const due = dueLabel(t);
+  const TaskActionButton = ({ children, onClick, orange, danger }) => (
+    <button onClick={onClick} style={{ border:"1px solid "+(danger ? C.red : orange ? C.orange : C.border), background:orange ? C.orange : danger ? C.red+"18" : "transparent", color:orange ? "#fff" : danger ? C.red : C.cream, borderRadius:999, padding:"6px 10px", fontSize:11, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" }}>{children}</button>
+  );
+
+  const renderTaskCard = (task, sectionKey) => {
+    const t = normalizeTask(task);
     const done = t.status === "Done";
     const late = taskLateInfo(t);
+    const due = dueInfo(t);
+    const score = scoreTask(t);
     const mopasType = t.space === "mopas" ? getMopasTaskType(t) : "";
+    const checklistItems = Array.isArray(t.checklist) ? t.checklist : [];
+    const checklistDone = checklistItems.filter(item => item && typeof item === "object" && item.done === true).length;
+    const checklistTotal = checklistItems.length;
+    const progressPct = done ? 100 : checklistTotal ? Math.round((checklistDone / checklistTotal) * 100) : (t.status === "In Progress" ? 45 : 0);
+    const borderColor = done ? C.green : late.isLate ? C.red : sectionKey === "next" ? C.orange : priorityColor(t.priority);
     return (
-      <div key={t.id} onClick={() => setSelected(t)} style={{ display:"grid", gridTemplateColumns:"auto minmax(0,1fr) auto", alignItems:"center", gap:12, padding:"10px 12px", borderRadius:8, marginBottom:6, cursor:"pointer", background: selected && selected.id === t.id ? C.elevated : late.isLate ? C.red+"10" : C.bg, border:"1px solid "+(selected && selected.id === t.id ? C.orange : done ? C.green : late.isLate ? C.red : C.border), borderLeft:"4px solid "+(done ? C.green : late.isLate ? C.red : mopasType === "Tender Working On" ? C.gold : due.color), opacity:done ? .58 : 1 }}>
-        <span style={{ fontSize:14, width:24 }}>{done ? "✓" : late.isLate ? "◬" : t.status === "In Progress" ? "↻" : t.status === "Blocked" ? "Blocked" : "⫸"}</span>
-        <div style={{ minWidth:0 }}>
-          <div style={{ fontWeight:700, color:done ? C.muted : late.isLate ? C.red : C.cream, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", textDecoration:done ? "line-through" : "none" }}>{t.title}</div>
-          <div style={{ fontSize:11, color:C.muted, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{(t.folder || "General")+" / "+(t.list || "Tasks")}{t.time ? " · " + t.time : ""}</div>
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:5 }}>
-            {mopasType && <Badge color={mopasType === "Tender Working On" ? C.gold : C.blue}>{mopasType}</Badge>}
-            <Badge color={statusColor(t.status)}>{done ? "Completed" : t.status}</Badge>
-            <Badge color={priorityColor(t.priority)}>{t.priority}</Badge>
-            <Badge color={due.color}>{due.label}</Badge>
-            {late.isLate && <Badge color={C.red}>Late · separated</Badge>}
-            {done && <Badge color={C.green}>Locked</Badge>}
-            {mopasType === "Tender Working On" && t.tenderStage && <Badge color={C.blue}>{t.tenderStage}</Badge>}
+      <div key={t.id} onClick={() => setSelected(t)} style={{ background:selected?.id === t.id ? C.elevated : C.bg, border:"1px solid "+(selected?.id === t.id ? C.orange : C.border), borderLeft:"5px solid "+borderColor, borderRadius:16, padding:13, cursor:"pointer", boxShadow:sectionKey === "next" ? "0 14px 28px rgba(0,0,0,.22)" : "none", opacity:done ? .72 : 1 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:12, alignItems:"start" }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", marginBottom:7 }}>
+              <Badge color={borderColor}>{sectionKey === "next" ? "NEXT" : done ? "PROOF" : late.isLate ? "RECOVER" : t.status}</Badge>
+              <Badge color={priorityColor(t.priority)}>{t.priority}</Badge>
+              <Badge color={due.color}>{due.label}</Badge>
+              {mopasType && <Badge color={mopasType === "Tender Working On" ? C.gold : C.blue}>{mopasType}</Badge>}
+              {t.isRoutine && <Badge color={C.gold}>Routine</Badge>}
+            </div>
+            <div style={{ fontWeight:900, fontSize:15, color:done ? C.muted : late.isLate ? C.red : C.cream, lineHeight:1.35, textDecoration:done ? "line-through" : "none" }}>{t.title}</div>
+            <div style={{ color:C.creamSoft, fontSize:12, marginTop:5, lineHeight:1.35 }}>{(t.folder || "General") + " / " + (t.list || "Tasks")}{t.time ? " · " + t.time : ""}</div>
+            {(t.goal || t.details) && <div style={{ color:C.muted, fontSize:12, marginTop:7, lineHeight:1.45, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{t.goal || t.details}</div>}
+          </div>
+          <div style={{ width:58, height:58, borderRadius:"50%", border:"3px solid "+borderColor, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:borderColor, background:borderColor+"12", flexShrink:0 }}>
+            {score}
           </div>
         </div>
-        <div style={{ display:"grid", gap:5 }}>
-          {done ? (
-            <Btn small orange onClick={(e) => { e.stopPropagation(); onUpdate({ ...t, status:"To Do", locked:false, completedAt:"" }); }}>Reopen</Btn>
-          ) : STATUSES.filter(st => st !== t.status).slice(0,2).map(st => (
-            <Btn key={st} small ghost onClick={(e) => { e.stopPropagation(); onUpdate({ ...t, status:st }); }}>{st}</Btn>
-          ))}
+        <div style={{ marginTop:11, height:7, background:C.surface, borderRadius:999, overflow:"hidden", border:"1px solid "+C.border }}>
+          <div style={{ height:"100%", width:`${Math.max(4, progressPct)}%`, background:done ? C.green : borderColor, borderRadius:999 }} />
+        </div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap", marginTop:10 }}>
+          <div style={{ color:C.muted, fontSize:11 }}>{checklistTotal ? `${checklistDone}/${checklistTotal} checklist` : `Task ID: ${t.id}`}</div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            {done ? (
+              <TaskActionButton orange onClick={(e) => { e.stopPropagation(); reopenTask(t); }}>Reopen</TaskActionButton>
+            ) : (
+              <>
+                {t.status !== "In Progress" && <TaskActionButton onClick={(e) => { e.stopPropagation(); startTask(t); }}>Start</TaskActionButton>}
+                <TaskActionButton orange onClick={(e) => { e.stopPropagation(); markDone(t); }}>Done</TaskActionButton>
+                {late.isLate && <TaskActionButton danger onClick={(e) => { e.stopPropagation(); moveTomorrow(t); }}>Move tomorrow</TaskActionButton>}
+              </>
+            )}
+          </div>
         </div>
       </div>
     );
   };
 
   const renderSection = (section) => {
-    const isCollapsed = !!collapsedSections?.[section.key];
+    const collapsed = !!collapsedSections?.[section.key];
     return (
-      <div style={{ marginTop:0 }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:isCollapsed ? 0 : 8, padding:"10px 12px", background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+section.color, borderRadius:10 }}>
+      <div key={section.key} style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:18, padding:12 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:collapsed ? 0 : 12 }}>
           <div style={{ minWidth:0 }}>
             <div style={{ color:section.color, fontSize:12, letterSpacing:2, fontWeight:900 }}>{section.title}</div>
-            <div style={{ color:C.creamSoft, fontSize:12, marginTop:2 }}>{section.subtitle}</div>
+            <div style={{ color:C.creamSoft, fontSize:12, marginTop:3, lineHeight:1.4 }}>{section.subtitle}</div>
           </div>
           <div style={{ display:"flex", gap:7, alignItems:"center", flexWrap:"wrap" }}>
             <Badge color={section.color}>{section.items.length}</Badge>
-            <Btn small ghost onClick={() => toggleSection(section.key)}>{isCollapsed ? "Expand" : "Collapse"}</Btn>
+            <Btn small ghost onClick={() => toggleSection(section.key)}>{collapsed ? "Open" : "Hide"}</Btn>
           </div>
         </div>
-        {!isCollapsed && (!section.items.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:18, background:C.bg, border:"1px dashed "+C.border, borderRadius:10, marginBottom:10 }}>{section.empty}</div> : section.items.map(renderTaskRow))}
+        {!collapsed && (
+          !section.items.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:18, background:C.bg, border:"1px dashed "+C.border, borderRadius:14 }}>{section.empty}</div> :
+          <div style={{ display:"grid", gap:10 }}>{section.items.map(item => renderTaskCard(item, section.key))}</div>
+        )}
       </div>
     );
   };
 
   return (
-    <div style={PNL}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:12 }}>
-        <div>
-          <div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>TASK CATEGORIES</div>
-          <div style={{ color:C.creamSoft, fontSize:12 }}>{lateCount ? `${lateCount} late task${lateCount === 1 ? "" : "s"} marked red and separated` : "Done tasks are always visible at the bottom"}</div>
+    <div style={{ ...PNL, padding:14 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))", gap:10, marginBottom:14 }}>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>TASK COMMAND QUEUE</div>
+          <div style={{ color:C.cream, fontSize:18, fontWeight:900, marginTop:4 }}>{currentSpace.name}</div>
+          <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>Formula: urgency + deadline + routine + status + MOPAS impact.</div>
+        </div>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}><div style={{ color:C.muted, fontSize:11 }}>NEXT MISSION</div><div style={{ color:C.orange, fontSize:18, fontWeight:900, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{metrics.nextMission?.title || "No mission"}</div></div>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}><div style={{ color:C.muted, fontSize:11 }}>TODAY / ROUTINE</div><div style={{ color:C.gold, fontSize:18, fontWeight:900 }}>{metrics.today.length}</div></div>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}><div style={{ color:C.muted, fontSize:11 }}>RECOVERY</div><div style={{ color:metrics.late.length ? C.red : C.green, fontSize:18, fontWeight:900 }}>{metrics.late.length}</div></div>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}><div style={{ color:C.muted, fontSize:11 }}>PROOF DONE</div><div style={{ color:C.green, fontSize:18, fontWeight:900 }}>{metrics.done.length} · {metrics.donePct}%</div></div>
+      </div>
+
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+        <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
+          {[['mission','Mission'], ['routine','Routine'], ['recovery','Recovery'], ['work','Work'], ['all','All']].map(([key, label]) => <Btn key={key} small orange={taskLens === key} ghost={taskLens !== key} onClick={() => setTaskLens(key)}>{label}</Btn>)}
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-          <Badge color={C.green}>{doneCount} done</Badge>
-          <Btn small ghost onClick={collapseAll}>Collapse All</Btn>
-          <Btn small ghost onClick={expandAll}>Expand All</Btn>
+          <input value={taskSearch} onChange={e => setTaskSearch(e.target.value)} placeholder="Search tasks..." style={{ width:190, maxWidth:"100%", padding:"8px 11px", borderRadius:999, border:"1px solid "+C.border, background:C.bg, color:C.cream, outline:"none", fontSize:12 }} />
+          <Btn small ghost onClick={collapseAll}>Collapse</Btn>
+          <Btn small ghost onClick={expandAll}>Expand</Btn>
         </div>
       </div>
-      {!ordered.length ? (
-        <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:24, background:C.bg, border:"1px dashed "+C.border, borderRadius:10 }}>No task found with the current filters.</div>
-      ) : (
-        <div style={{ display:"grid", gap:12 }}>
-          {taskSections.map(renderSection)}
-        </div>
-      )}
+
+      {!ordered.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:24, background:C.bg, border:"1px dashed "+C.border, borderRadius:14 }}>No task found with the current filters.</div> : <div style={{ display:"grid", gap:12 }}>{filteredSections.map(renderSection)}</div>}
     </div>
   );
 }
