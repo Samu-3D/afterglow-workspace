@@ -873,8 +873,152 @@ function FormulaStrip({ metrics }) {
   );
 }
 
-function AfterglowCommandHubV3({ tasks, settings, goSpace, setView, setActiveSpace, setSelected, setShowNewTask, setShowEndDayReview, onUpdate, isPhoneLayout }) {
+function RoutineEngineCommandPanel({ tasks = [], onUpdate, setActiveSpace, setView, setSelected, isPhoneLayout }) {
+  const todayKey = localTodayISO();
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const timeToMinutes = (time) => {
+    const [h, m] = String(time || "00:00").split(":").map(Number);
+    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+  };
+  const day = (parseDateKey(todayKey) || new Date()).getDay();
+  const dueRoutines = DAILY_ROUTINES.filter(r => !Array.isArray(r.days) || r.days.includes(day));
+  const phaseOf = (routine) => {
+    const min = timeToMinutes(routine.time || "23:59");
+    if (Array.isArray(routine.days)) return { key:"weekly", label:"Weekly Protection", color:C.gold };
+    if (min < 9 * 60) return { key:"morning", label:"Morning Foundation", color:C.orange };
+    if (min < 18 * 60) return { key:"work", label:"MOPAS Execution", color:C.blue };
+    if (min < 21 * 60) return { key:"energy", label:"Energy Reset", color:C.green };
+    return { key:"night", label:"Night Build", color:C.purple };
+  };
+  const cards = dueRoutines.map(routine => {
+    const task = tasks.find(t => t.isRoutine && t.routineKey === routine.routineKey && t.routineDate === todayKey) || tasks.find(t => t.id === routineTaskId(routine.routineKey, todayKey));
+    const done = task?.status === "Done";
+    const mins = timeToMinutes(routine.time || "23:59");
+    const lateBy = !done && nowMinutes > mins ? nowMinutes - mins : 0;
+    const phase = phaseOf(routine);
+    const score = clampNumber((routine.priority === "Urgent" ? 35 : routine.priority === "High" ? 25 : 12) + (lateBy ? Math.min(35, Math.round(lateBy / 6)) : 10) + (task?.status === "In Progress" ? 20 : 0));
+    const checklist = Array.isArray(task?.checklist) ? task.checklist : [];
+    const proofDone = checklist.filter(item => item && typeof item === "object" && item.done === true).length;
+    const proofPct = checklist.length ? Math.round((proofDone / checklist.length) * 100) : (done ? 100 : 0);
+    return { routine, task, done, lateBy, phase, score, proofPct, minutes:mins };
+  }).sort((a, b) => (a.done - b.done) || (b.lateBy - a.lateBy) || (a.minutes - b.minutes));
+  const doneCount = cards.filter(c => c.done).length;
+  const completion = percentValue(doneCount, cards.length);
+  const recovery = cards.filter(c => !c.done && c.lateBy > 0);
+  const active = cards.find(c => !c.done && c.minutes <= nowMinutes + 45) || cards.find(c => !c.done) || null;
+  const phases = ["morning", "work", "energy", "night", "weekly"].map(key => {
+    const phaseCards = cards.filter(c => c.phase.key === key);
+    const sample = phaseCards[0]?.phase || { key, label:titleCase(key), color:C.muted };
+    return { ...sample, total:phaseCards.length, done:phaseCards.filter(c => c.done).length, score:percentValue(phaseCards.filter(c => c.done).length, phaseCards.length) };
+  }).filter(p => p.total > 0);
+  const openRoutineTask = (card) => {
+    if (!card?.task) return;
+    setActiveSpace(card.task.space || card.routine.space || "wakeup");
+    setView("list");
+    setSelected(card.task);
+  };
+  const updateRoutine = (card, status) => {
+    if (!card?.task) return;
+    onUpdate({ ...card.task, status, completedAt:status === "Done" ? new Date().toISOString() : "", locked:status === "Done" });
+  };
+  return (
+    <div style={{ ...PNL, borderLeft:"5px solid "+C.gold, padding:isPhoneLayout ? 14 : 18 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", gap:12, flexWrap:"wrap", alignItems:"flex-start" }}>
+        <div>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>DAILY ROUTINE ENGINE</div>
+          <h2 style={{ margin:"4px 0", color:C.cream, fontSize:isPhoneLayout ? 20 : 24 }}>Today must run by rhythm, not memory.</h2>
+          <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5 }}>Morning, MOPAS execution, energy reset, night build, and weekly savings are controlled from one simple system.</div>
+        </div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          <Badge color={completion >= 80 ? C.green : completion >= 45 ? C.orange : C.red}>{completion}% complete</Badge>
+          <Badge color={recovery.length ? C.red : C.green}>{recovery.length} recovery</Badge>
+        </div>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "minmax(0,1.2fr) minmax(240px,.8fr)", gap:12, marginTop:14 }}>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+(active?.lateBy ? C.red : C.orange), borderRadius:14, padding:13, minWidth:0 }}>
+          <div style={{ color:C.orange, fontSize:11, letterSpacing:2, fontWeight:900 }}>CURRENT ROUTINE MISSION</div>
+          <div style={{ color:C.cream, fontSize:20, fontWeight:900, marginTop:6 }}>{active?.routine?.title || "No routine mission now"}</div>
+          <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.45, marginTop:5 }}>{active ? `${active.phase.label} · ${active.routine.time || "No time"} · ${active.lateBy ? `${active.lateBy} minutes late` : "on time / upcoming"}` : "All routine blocks are complete or not due yet."}</div>
+          {active && <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(90px, 1fr))", gap:8, marginTop:11 }}>
+            <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:10, padding:9 }}><b style={{ color:C.orange }}>{active.score}</b><div style={{ color:C.muted, fontSize:10 }}>Routine score</div></div>
+            <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:10, padding:9 }}><b style={{ color:active.proofPct >= 70 ? C.green : C.gold }}>{active.proofPct}%</b><div style={{ color:C.muted, fontSize:10 }}>Proof</div></div>
+            <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:10, padding:9 }}><b style={{ color:active.lateBy ? C.red : C.green }}>{active.lateBy ? "Recover" : "Next"}</b><div style={{ color:C.muted, fontSize:10 }}>Mode</div></div>
+          </div>}
+          {active && active.task && <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
+            {active.task.status !== "In Progress" && active.task.status !== "Done" && <Btn small ghost onClick={() => updateRoutine(active, "In Progress")}>Start</Btn>}
+            {active.task.status !== "Done" && <Btn small orange onClick={() => updateRoutine(active, "Done")}>Mark Done</Btn>}
+            {active.task.status === "Done" && <Btn small ghost onClick={() => updateRoutine(active, "To Do")}>Reopen</Btn>}
+            <Btn small ghost onClick={() => openRoutineTask(active)}>Open task</Btn>
+          </div>}
+        </div>
+        <div style={{ display:"grid", gap:8 }}>
+          {phases.map(phase => <div key={phase.key} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+phase.color, borderRadius:12, padding:10 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", gap:8 }}><b style={{ color:phase.color, fontSize:12 }}>{phase.label}</b><span style={{ color:C.creamSoft, fontSize:12 }}>{phase.done}/{phase.total}</span></div>
+            <div style={{ height:7, background:C.elevated, borderRadius:999, marginTop:8, overflow:"hidden" }}><div style={{ width:`${phase.score}%`, height:"100%", background:phase.color }} /></div>
+          </div>)}
+        </div>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:9, marginTop:12 }}>
+        {cards.slice(0, isPhoneLayout ? 5 : 8).map(card => <div key={card.routine.routineKey} onClick={() => openRoutineTask(card)} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+(card.done ? C.green : card.lateBy ? C.red : card.phase.color), borderRadius:12, padding:10, cursor:card.task ? "pointer" : "default", opacity:card.done ? .72 : 1 }}>
+          <div style={{ color:card.done ? C.green : card.lateBy ? C.red : card.phase.color, fontSize:11, fontWeight:900 }}>{card.routine.time || "--:--"} · {card.phase.label}</div>
+          <div style={{ color:C.cream, fontSize:13, fontWeight:900, marginTop:4, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{card.routine.title}</div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:7 }}><Badge color={card.done ? C.green : card.lateBy ? C.red : C.gold}>{card.done ? "Done" : card.lateBy ? "Recover" : "Open"}</Badge><Badge color={C.muted}>{card.score}</Badge></div>
+        </div>)}
+      </div>
+    </div>
+  );
+}
+
+function NotificationCommandPanel({ settings, metrics, sendTodayDisciplineEmail, setView, isPhoneLayout }) {
+  const [notice, setNotice] = useState(null);
+  const emailAddress = settings?.notifications?.emailAddress || "No email set";
+  const emailTime = settings?.notifications?.todayDisciplineEmailTime || "05:45";
+  const currentAction = metrics.nextAction?.title || "No active mission";
+  const askBrowser = async () => {
+    try {
+      if (typeof Notification === "undefined") return setNotice("Browser notifications are not supported in this browser.");
+      const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+      if (permission === "granted") {
+        new Notification("AFTERGLOW Current Action", { body: currentAction });
+        setNotice("Browser notification test sent.");
+      } else setNotice("Browser notification permission was not allowed.");
+    } catch (error) { setNotice(String(error?.message || error)); }
+  };
+  const rules = [
+    { title:"Morning brief", note:`Email at ${emailTime} with today’s first action.`, color:C.gold },
+    { title:"Current action", note:"One focused action only. No noisy long email.", color:C.orange },
+    { title:"Recovery warning", note:`${metrics.lateTasks.length} late task(s) visible in recovery queue.`, color:metrics.lateTasks.length ? C.red : C.green },
+    { title:"Document risk", note:`${metrics.expiredDocs.length + metrics.expiringDocs.length} document alert(s).`, color:(metrics.expiredDocs.length || metrics.expiringDocs.length) ? C.orange : C.green },
+    { title:"Money reminder", note:"ITSINDA, income, expense and savings are checked daily.", color:C.blue },
+  ];
+  return (
+    <div style={{ ...PNL, borderLeft:"5px solid "+C.purple, padding:isPhoneLayout ? 14 : 18 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", gap:10, flexWrap:"wrap" }}>
+        <div>
+          <div style={{ color:C.purple, fontSize:11, letterSpacing:2, fontWeight:900 }}>NOTIFICATION ENGINE</div>
+          <h2 style={{ margin:"4px 0", color:C.cream, fontSize:isPhoneLayout ? 20 : 24 }}>Less noise. More action.</h2>
+          <div style={{ color:C.creamSoft, fontSize:12 }}>Notifications focus on the current mission, routine recovery, tenders, documents, and money.</div>
+        </div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          <Btn small orange onClick={() => sendTodayDisciplineEmail?.({ manual:true })}>Send action email</Btn>
+          <Btn small ghost onClick={askBrowser}>Test browser</Btn>
+          <Btn small ghost onClick={() => setView("settings")}>Settings</Btn>
+        </div>
+      </div>
+      <div style={{ color:C.muted, fontSize:11, marginTop:8 }}>Email: {emailAddress}</div>
+      {notice && <div style={{ color:C.gold, fontSize:12, marginTop:8 }}>{notice}</div>}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:9, marginTop:12 }}>
+        {rules.map(rule => <div key={rule.title} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+rule.color, borderRadius:12, padding:10 }}><b style={{ color:rule.color, fontSize:12 }}>{rule.title}</b><div style={{ color:C.creamSoft, fontSize:11, lineHeight:1.4, marginTop:5 }}>{rule.note}</div></div>)}
+      </div>
+    </div>
+  );
+}
+
+function AfterglowCommandHubV3({ tasks, settings, goSpace, setView, setActiveSpace, setSelected, setShowNewTask, setShowEndDayReview, onUpdate, isPhoneLayout, sendTodayDisciplineEmail }) {
   const metrics = useMemo(() => getAfterglowMetrics(tasks, settings), [tasks, settings]);
+  const [mode, setMode] = useState("today");
+  const [showDeep, setShowDeep] = useState(false);
   const next = metrics.nextAction;
   const openNext = () => {
     if (!next) return setShowNewTask(true);
@@ -884,77 +1028,70 @@ function AfterglowCommandHubV3({ tasks, settings, goSpace, setView, setActiveSpa
   };
   const markNextProgress = () => {
     if (!next) return;
-    onUpdate({ ...next, status: next.status === "To Do" ? "In Progress" : "Done" });
+    onUpdate({ ...next, status: next.status === "To Do" ? "In Progress" : "Done", completedAt:next.status === "To Do" ? "" : new Date().toISOString() });
   };
+  const riskCount = metrics.lateTasks.length + metrics.expiredDocs.length + metrics.expiringDocs.length;
+  const quickCards = [
+    { key:"routine", title:"Routine", value:`${metrics.routineDone}/${metrics.routineTotal}`, note:"daily engine", color:C.gold, action:() => setMode("routine") },
+    { key:"tasks", title:"Tasks", value:`${metrics.doneToday.length}/${metrics.todayTasks.length || 0}`, note:"today progress", color:C.orange, action:() => setView("list") },
+    { key:"money", title:"Money", value:rwf(metrics.moneyDirection), note:"direction today", color:metrics.moneyDirection >= 0 ? C.green : C.red, action:() => { setActiveSpace("money"); setView("list"); } },
+    { key:"alerts", title:"Alerts", value:riskCount, note:"late + docs", color:riskCount ? C.red : C.green, action:() => setMode("alerts") },
+  ];
   return (
-    <div style={{ display:"grid", gap:16, maxWidth:1480, margin:"0 auto" }}>
-      <div style={{ ...PNL, padding:isPhoneLayout ? 16 : 22, background:`linear-gradient(135deg, ${C.elevated}, ${C.surface})`, overflow:"hidden" }}>
-        <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "minmax(0, 1.4fr) minmax(280px, .6fr)", gap:16, alignItems:"stretch" }}>
+    <div style={{ display:"grid", gap:14, maxWidth:1320, margin:"0 auto" }}>
+      <div style={{ ...PNL, padding:isPhoneLayout ? 16 : 22, background:`linear-gradient(135deg, ${C.elevated}, ${C.surface})` }}>
+        <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "minmax(0,1.3fr) minmax(260px,.7fr)", gap:14, alignItems:"stretch" }}>
           <div style={{ minWidth:0 }}>
-            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>AFTERGLOW LIFE OS V3</div>
-            <h1 style={{ margin:"6px 0", fontSize:isPhoneLayout ? 25 : 36, lineHeight:1.05 }}>One command system for work, money, health, documents, tenders, and creative growth.</h1>
-            <p style={{ color:C.creamSoft, margin:"8px 0 0", lineHeight:1.55 }}>Built like a combination of Monday boards, ClickUp spaces, Notion knowledge, Airtable records, Trello cards, Smartsheet reports, and Linear roadmap — but customized for Samuel and MOPAS.</p>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:16 }}>
-              <Btn orange onClick={openNext}>{next ? "Open next mission" : "Create first mission"}</Btn>
-              {next && <Btn ghost onClick={markNextProgress}>{next.status === "To Do" ? "Start it" : "Mark done"}</Btn>}
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>AFTERGLOW LIFE OS / CLEAN COMMAND CENTER</div>
+            <h1 style={{ margin:"6px 0", fontSize:isPhoneLayout ? 24 : 34, lineHeight:1.05 }}>One screen. One mission. Everything else waits.</h1>
+            <p style={{ color:C.creamSoft, margin:"8px 0 0", lineHeight:1.55, maxWidth:760 }}>The overview is now reduced: current mission, routine, money, alerts, and notifications. Deep boards and databases are still available when you need them.</p>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
+              <Btn orange onClick={openNext}>{next ? "Open current mission" : "Create first mission"}</Btn>
+              {next && <Btn ghost onClick={markNextProgress}>{next.status === "To Do" ? "Start" : "Mark done"}</Btn>}
               <Btn ghost onClick={() => setShowEndDayReview(true)}>End Day Review</Btn>
-              <Btn ghost onClick={() => setView("boards")}>Open Boards</Btn>
+              <Btn ghost onClick={() => setShowDeep(v => !v)}>{showDeep ? "Hide deep system" : "Show deep system"}</Btn>
             </div>
           </div>
-          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:16, minWidth:0 }}>
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"5px solid "+(next && isLateTask(next) ? C.red : C.orange), borderRadius:16, padding:16, minWidth:0 }}>
             <div style={{ color:C.orange, fontSize:11, letterSpacing:2, fontWeight:900 }}>CURRENT MISSION</div>
             <div style={{ fontSize:20, fontWeight:900, marginTop:8, lineHeight:1.25 }}>{next ? next.title : "No active mission selected"}</div>
-            <div style={{ color:C.muted, fontSize:12, marginTop:8 }}>{next ? `${getSpaceLabel(next.space)} · ${next.due || "No deadline"}${next.time ? " · "+next.time : ""}` : "Create a task or let daily routines generate your next action."}</div>
-            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:12 }}>
-              {next && <><Badge color={priorityColor(next.priority)}>{next.priority}</Badge><Badge color={statusColor(next.status)}>{next.status}</Badge>{isLateTask(next) && <Badge color={C.red}>{taskLateInfo(next).label}</Badge>}</>}
-            </div>
+            <div style={{ color:C.muted, fontSize:12, marginTop:8 }}>{next ? `${getSpaceLabel(next.space)} · ${next.due || "No deadline"}${next.time ? " · "+next.time : ""}` : "Create a task or sync from cloud."}</div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:12 }}>{next && <><Badge color={priorityColor(next.priority)}>{next.priority}</Badge><Badge color={statusColor(next.status)}>{next.status}</Badge>{isLateTask(next) && <Badge color={C.red}>{taskLateInfo(next).label}</Badge>}</>}</div>
           </div>
         </div>
       </div>
 
-      <FormulaStrip metrics={metrics} />
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:12 }}>
-        <KPIBox label="Today tasks" value={`${metrics.doneToday.length}/${metrics.todayTasks.length || 0}`} sub="completed today" color={C.orange} onClick={() => setView("list")} action="Open task list" />
-        <KPIBox label="Late recovery" value={metrics.lateTasks.length} sub={`${metrics.urgentLate} urgent · ${metrics.highLate} high`} color={metrics.lateTasks.length ? C.red : C.green} onClick={() => setView("boards")} action="Recover by board" />
-        <KPIBox label="Tender pressure" value={metrics.tenderUrgent} sub={`${metrics.tenderOpen.length} active tender tasks`} color={metrics.tenderUrgent ? C.red : C.blue} onClick={() => { setActiveSpace("mopas"); setView("list"); }} action="Open MOPAS" />
-        <KPIBox label="Documents risk" value={metrics.expiredDocs.length + metrics.expiringDocs.length} sub={`${metrics.expiredDocs.length} expired · ${metrics.expiringDocs.length} expiring`} color={(metrics.expiredDocs.length || metrics.expiringDocs.length) ? C.orange : C.green} onClick={() => setView("database")} action="Open data hub" />
-        <KPIBox label="Money today" value={rwf(metrics.incomeToday - metrics.expenseToday)} sub={`${rwf(metrics.savingsToday)} savings today`} color={(metrics.incomeToday - metrics.expenseToday) >= 0 ? C.green : C.red} onClick={() => { setActiveSpace("money"); setView("list"); }} action="Open money" />
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:10 }}>
+        {quickCards.map(card => <div key={card.key} onClick={card.action} style={{ background:C.surface, border:"1px solid "+C.border, borderLeft:"4px solid "+card.color, borderRadius:14, padding:13, cursor:"pointer" }}>
+          <div style={{ color:C.creamSoft, fontSize:10, letterSpacing:1.5, textTransform:"uppercase" }}>{card.title}</div>
+          <div style={{ color:card.color, fontSize:22, fontWeight:900, marginTop:4 }}>{card.value}</div>
+          <div style={{ color:C.muted, fontSize:11, marginTop:3 }}>{card.note}</div>
+        </div>)}
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "1.1fr .9fr", gap:14 }}>
-        <div style={{ ...PNL }}>
-          <div style={{ display:"flex", justifyContent:"space-between", gap:10, flexWrap:"wrap", marginBottom:12 }}>
-            <div><div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>WORKSPACE HEALTH MAP</div><div style={{ color:C.muted, fontSize:12 }}>Each space works like ClickUp Space + Monday board group.</div></div>
-            <Btn small ghost onClick={() => setView("database")}>Open Data Hub</Btn>
-          </div>
-          <div style={{ display:"grid", gap:8 }}>
-            {metrics.spaceStats.map(space => (
-              <div key={space.id} onClick={() => goSpace(space.id)} style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) 70px", gap:10, alignItems:"center", background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:10, cursor:"pointer" }}>
-                <div style={{ minWidth:0 }}>
-                  <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}><b style={{ color:space.color }}>{space.name}</b><Badge color={space.late ? C.red : C.green}>{space.open} open</Badge>{space.late > 0 && <Badge color={C.red}>{space.late} late</Badge>}</div>
-                  <div style={{ height:7, background:C.elevated, borderRadius:999, marginTop:8, overflow:"hidden" }}><div style={{ width:`${space.progress}%`, height:"100%", background:space.color }} /></div>
-                </div>
-                <div style={{ color:space.color, fontWeight:900, textAlign:"right" }}>{space.progress}%</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ ...PNL }}>
-          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:10 }}>SMART WARNINGS</div>
-          <div style={{ display:"grid", gap:9 }}>
-            {metrics.lateTasks.slice(0, 4).map(task => (
-              <div key={task.id} onClick={() => { setActiveSpace(task.space); setView("list"); setSelected(task); }} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+C.red, borderRadius:10, padding:10, cursor:"pointer" }}>
-                <b style={{ color:C.red, fontSize:13 }}>{task.title}</b>
-                <div style={{ color:C.muted, fontSize:11, marginTop:3 }}>{getSpaceLabel(task.space)} · {taskLateInfo(task).label}</div>
-              </div>
-            ))}
-            {metrics.expiredDocs.slice(0, 2).map(doc => <div key={doc.id || doc.name} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+C.red, borderRadius:10, padding:10 }}><b style={{ color:C.red, fontSize:13 }}>{doc.name || doc.title || "Expired document"}</b><div style={{ color:C.muted, fontSize:11 }}>Expired · {doc.expiryDate}</div></div>)}
-            {!metrics.lateTasks.length && !metrics.expiredDocs.length && !metrics.expiringDocs.length && <div style={{ color:C.muted, padding:18, textAlign:"center", background:C.bg, border:"1px dashed "+C.border, borderRadius:12 }}>No critical warning now. Keep moving.</div>}
-          </div>
-        </div>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+        {[ ["today", "Today"], ["routine", "Routine"], ["money", "Money"], ["alerts", "Alerts"], ["notifications", "Notifications"] ].map(([key, label]) => <Btn key={key} small orange={mode === key} ghost={mode !== key} onClick={() => setMode(key)}>{label}</Btn>)}
       </div>
+
+      {mode === "today" && <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "1fr 1fr", gap:12 }}>
+        <RoutineEngineCommandPanel tasks={tasks} onUpdate={onUpdate} setActiveSpace={setActiveSpace} setView={setView} setSelected={setSelected} isPhoneLayout={isPhoneLayout} />
+        <NotificationCommandPanel settings={settings} metrics={metrics} sendTodayDisciplineEmail={sendTodayDisciplineEmail} setView={setView} isPhoneLayout={isPhoneLayout} />
+      </div>}
+      {mode === "routine" && <RoutineEngineCommandPanel tasks={tasks} onUpdate={onUpdate} setActiveSpace={setActiveSpace} setView={setView} setSelected={setSelected} isPhoneLayout={isPhoneLayout} />}
+      {mode === "money" && <div style={{ ...PNL, borderLeft:"5px solid "+C.gold }}><div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>MONEY SNAPSHOT</div><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:10, marginTop:12 }}><KPIBox label="Today income" value={rwf(metrics.incomeToday)} color={C.green} /><KPIBox label="Today expense" value={rwf(metrics.expenseToday)} color={C.red} /><KPIBox label="Savings today" value={rwf(metrics.savingsToday)} color={C.gold} /><KPIBox label="ITSINDA week" value={rwf(metrics.itsindaThisWeek)} color={metrics.itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT ? C.green : C.orange} /></div><div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}><Btn orange onClick={() => { setActiveSpace("money"); setView("list"); }}>Open Money System</Btn><Btn ghost onClick={() => setMode("notifications")}>Money reminders</Btn></div></div>}
+      {mode === "alerts" && <div style={{ ...PNL, borderLeft:"5px solid "+(riskCount ? C.red : C.green) }}><div style={{ color:riskCount ? C.red : C.green, fontSize:11, letterSpacing:2, fontWeight:900 }}>SMART ALERTS</div><div style={{ display:"grid", gap:9, marginTop:12 }}>{metrics.lateTasks.slice(0, 5).map(task => <div key={task.id} onClick={() => { setActiveSpace(task.space); setView("list"); setSelected(task); }} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+C.red, borderRadius:10, padding:10, cursor:"pointer" }}><b style={{ color:C.red }}>{task.title}</b><div style={{ color:C.muted, fontSize:11 }}>{getSpaceLabel(task.space)} · {taskLateInfo(task).label}</div></div>)}{metrics.docsWithStatus.filter(d => d.statusInfo.label !== "Active").slice(0, 4).map(doc => <div key={doc.id || doc.name} style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+doc.statusInfo.color, borderRadius:10, padding:10 }}><b style={{ color:doc.statusInfo.color }}>{doc.name || doc.title || "Document"}</b><div style={{ color:C.muted, fontSize:11 }}>{doc.statusInfo.label} · {doc.expiryDate}</div></div>)}{riskCount === 0 && <div style={{ color:C.muted, textAlign:"center", padding:20, background:C.bg, border:"1px dashed "+C.border, borderRadius:12 }}>No critical alert now.</div>}</div></div>}
+      {mode === "notifications" && <NotificationCommandPanel settings={settings} metrics={metrics} sendTodayDisciplineEmail={sendTodayDisciplineEmail} setView={setView} isPhoneLayout={isPhoneLayout} />}
+
+      {showDeep && <>
+        <FormulaStrip metrics={metrics} />
+        <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "1.1fr .9fr", gap:14 }}>
+          <div style={{ ...PNL }}>
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:10 }}>WORKSPACE HEALTH MAP</div>
+            <div style={{ display:"grid", gap:8 }}>{metrics.spaceStats.map(space => <div key={space.id} onClick={() => goSpace(space.id)} style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) 70px", gap:10, alignItems:"center", background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:10, cursor:"pointer" }}><div style={{ minWidth:0 }}><b style={{ color:space.color }}>{space.name}</b><div style={{ height:7, background:C.elevated, borderRadius:999, marginTop:8, overflow:"hidden" }}><div style={{ width:`${space.progress}%`, height:"100%", background:space.color }} /></div></div><b style={{ color:space.color, textAlign:"right" }}>{space.progress}%</b></div>)}</div>
+          </div>
+          <div style={{ ...PNL }}><div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:10 }}>SYSTEM SHORTCUTS</div><div style={{ display:"grid", gap:8 }}><Btn ghost onClick={() => setView("boards")}>Boards</Btn><Btn ghost onClick={() => setView("database")}>Data Hub</Btn><Btn ghost onClick={() => setView("automations")}>Automations</Btn><Btn ghost onClick={() => setView("reports")}>Reports</Btn><Btn ghost onClick={() => setView("knowledge")}>Knowledge</Btn></div></div>
+        </div>
+      </>}
     </div>
   );
 }
@@ -2954,7 +3091,7 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
   const [moneyForm, setMoneyForm] = useState({ id:"", date:localTodayISO(), type:"expense", amount:"", category:"", note:"", linkType:"none", linkedId:"" });
   const [purchaseForm, setPurchaseForm] = useState({ id:"", title:"", targetAmount:"", savedAmount:"", priority:"High", deadline:"", note:"" });
   const [futureForm, setFutureForm] = useState({ id:"", title:"", targetAmount:"", savedAmount:"", deadline:"", category:"Life Goal", note:"" });
-  const [showMoreMoney, setShowMoreMoney] = useState(true);
+  const [showMoreMoney, setShowMoreMoney] = useState(false);
   const [moneyMode, setMoneyMode] = useState("overview");
 
   useEffect(() => { writeStore(MONEY_ENTRIES_KEY, moneyEntries); }, [moneyEntries]);
@@ -3161,6 +3298,14 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
   };
 
   const recentEntries = safeEntries.slice(0, showMoreMoney ? 12 : 5);
+  const savingsRate = moneyStats.monthIncome ? Math.round((moneyStats.monthlySavings / moneyStats.monthIncome) * 100) : 0;
+  const spendingRate = moneyStats.monthIncome ? Math.round((moneyStats.monthExpense / moneyStats.monthIncome) * 100) : 0;
+  const dayOfMonth = Number(todayKey.slice(-2)) || 1;
+  const daysInMonth = new Date(Number(todayKey.slice(0, 4)), Number(todayKey.slice(5, 7)), 0).getDate();
+  const remainingDays = Math.max(1, daysInMonth - dayOfMonth + 1);
+  const safeDailySpend = Math.max(0, Math.round((moneyStats.monthIncome - moneyStats.monthExpense - Math.max(ITSINDA_WEEKLY_AMOUNT, moneyStats.itsindaThisWeek)) / remainingDays));
+  const freedomScore = clampNumber((moneyStats.itsindaPaid ? 25 : 0) + Math.min(30, savingsRate) + (moneyStats.monthNet >= 0 ? 25 : 0) + Math.round((moneyStats.purchaseProgress + moneyStats.futureProgress) / 10));
+  const nextMoneyMove = !moneyStats.itsindaPaid ? "Pay / record ITSINDA 20,000 RWF" : moneyStats.todayExpense > moneyStats.todayIncome && moneyStats.todayIncome > 0 ? "Stop spending today and protect balance" : moneyStats.todaySavings <= 0 ? "Record one saving action" : "Review future goal or planned purchase";
 
   return (
     <div style={{ ...PNL, minWidth:0, borderLeft:"5px solid "+C.gold, marginBottom:16 }}>
@@ -3171,6 +3316,15 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
           <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5 }}>Income, expenses, ITSINDA, planned purchases, and future goals are now connected. Savings can update a specific goal automatically.</div>
         </div>
         <Btn small orange onClick={() => setShowMoreMoney(v => !v)}>{showMoreMoney ? "Collapse Money" : "Open Money Tools"}</Btn>
+      </div>
+
+      <div style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"5px solid "+(freedomScore >= 70 ? C.green : freedomScore >= 40 ? C.orange : C.red), borderRadius:16, padding:14, marginBottom:14 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:10, alignItems:"stretch" }}>
+          <div><div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>FINANCIAL COMMAND</div><div style={{ color:C.cream, fontSize:20, fontWeight:900, marginTop:4 }}>Freedom Score {freedomScore}%</div><div style={{ color:C.creamSoft, fontSize:12, marginTop:4 }}>Next money move: {nextMoneyMove}</div></div>
+          <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:12, padding:10 }}><b style={{ color:C.green }}>{savingsRate}%</b><div style={{ color:C.muted, fontSize:11 }}>Savings rate</div></div>
+          <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:12, padding:10 }}><b style={{ color:spendingRate > 70 ? C.red : C.orange }}>{spendingRate}%</b><div style={{ color:C.muted, fontSize:11 }}>Spending rate</div></div>
+          <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:12, padding:10 }}><b style={{ color:C.gold }}>{rwf(safeDailySpend)}</b><div style={{ color:C.muted, fontSize:11 }}>Safe daily spend</div></div>
+        </div>
       </div>
 
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginBottom:14 }}>
@@ -3299,11 +3453,67 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
   );
 }
 
+function RoutineTaskPopup({ task, onClose, onUpdate, onOpenDetails }) {
+  if (!task) return null;
+  const t = normalizeTask(task);
+  const routine = DAILY_ROUTINES.find(r => r.routineKey === t.routineKey) || {};
+  const todayKey = localTodayISO();
+  const late = taskLateInfo(t);
+  const checklist = Array.isArray(t.checklist) ? t.checklist : [];
+  const checked = checklist.filter(item => item && typeof item === "object" && item.done === true).length;
+  const proofPct = t.status === "Done" ? 100 : checklist.length ? Math.round((checked / checklist.length) * 100) : 0;
+  const updateStatus = (status) => onUpdate({ ...t, status, completedAt:status === "Done" ? new Date().toISOString() : "", locked:status === "Done" });
+  const moveTomorrow = () => onUpdate({ ...t, due:addDaysISO(todayKey, 1), routineDate:addDaysISO(todayKey, 1), status:"To Do", locked:false, completedAt:"" });
+  const toggleChecklist = (index) => {
+    const nextChecklist = checklist.map((item, idx) => {
+      const current = item && typeof item === "object" ? item : { text:String(item || ""), done:false };
+      return idx === index ? { ...current, done:!current.done } : current;
+    });
+    onUpdate({ ...t, checklist:nextChecklist });
+  };
+  return (
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.72)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:14 }}>
+      <div onClick={e => e.stopPropagation()} style={{ width:"min(720px, 100%)", maxHeight:"90vh", overflow:"auto", background:C.surface, border:"1px solid "+C.border, borderRadius:20, boxShadow:"0 28px 80px rgba(0,0,0,.55)", padding:18 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"flex-start" }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>ROUTINE TASK POPUP</div>
+            <h2 style={{ color:C.cream, margin:"5px 0", fontSize:24, lineHeight:1.15 }}>{t.title}</h2>
+            <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5 }}>{routine.goal || t.goal || "Routine action for today."}</div>
+          </div>
+          <button onClick={onClose} style={{ width:36, height:36, borderRadius:12, border:"1px solid "+C.border, background:C.bg, color:C.cream, cursor:"pointer", fontSize:18 }}>×</button>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginTop:14 }}>
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:10 }}><b style={{ color:C.orange }}>{t.time || routine.time || "--:--"}</b><div style={{ color:C.muted, fontSize:11 }}>Time block</div></div>
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:10 }}><b style={{ color:statusColor(t.status) }}>{t.status}</b><div style={{ color:C.muted, fontSize:11 }}>Status</div></div>
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:10 }}><b style={{ color:late.isLate ? C.red : C.green }}>{late.isLate ? late.label : "On track"}</b><div style={{ color:C.muted, fontSize:11 }}>Recovery</div></div>
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:10 }}><b style={{ color:proofPct >= 70 ? C.green : C.gold }}>{proofPct}%</b><div style={{ color:C.muted, fontSize:11 }}>Proof</div></div>
+        </div>
+        <div style={{ marginTop:14, background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12 }}>
+          <div style={{ color:C.gold, fontSize:12, fontWeight:900, marginBottom:8 }}>CHECKLIST PROOF</div>
+          {checklist.length ? <div style={{ display:"grid", gap:8 }}>{checklist.map((item, index) => {
+            const current = item && typeof item === "object" ? item : { text:String(item || ""), done:false };
+            return <label key={index} style={{ display:"flex", gap:9, alignItems:"flex-start", color:current.done ? C.muted : C.cream, fontSize:13, cursor:"pointer", lineHeight:1.4 }}><input type="checkbox" checked={!!current.done} onChange={() => toggleChecklist(index)} /> <span style={{ textDecoration:current.done ? "line-through" : "none" }}>{current.text}</span></label>;
+          })}</div> : <div style={{ color:C.muted, fontSize:13 }}>No checklist yet. Open details to add more proof steps.</div>}
+        </div>
+        {(t.details || routine.details) && <div style={{ marginTop:12, color:C.creamSoft, fontSize:13, lineHeight:1.55, background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12 }}>{t.details || routine.details}</div>}
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
+          {t.status !== "In Progress" && t.status !== "Done" && <Btn ghost onClick={() => updateStatus("In Progress")}>Start</Btn>}
+          {t.status !== "Done" && <Btn orange onClick={() => updateStatus("Done")}>Mark Done</Btn>}
+          {t.status === "Done" && <Btn ghost onClick={() => updateStatus("To Do")}>Reopen</Btn>}
+          {late.isLate && <Btn ghost style={{ color:C.red, borderColor:C.red }} onClick={moveTomorrow}>Move tomorrow</Btn>}
+          <Btn ghost onClick={() => { onOpenDetails?.(t); onClose(); }}>Open full details</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, settings }) {
   const safeTasks = Array.isArray(tasks) ? tasks.map(normalizeTask) : [];
   const [collapsedSections, setCollapsedSections] = useState(() => readStore(TASK_CATEGORY_COLLAPSE_KEY, {}));
   const [taskSearch, setTaskSearch] = useState("");
   const [taskLens, setTaskLens] = useState("mission");
+  const [routinePopupTask, setRoutinePopupTask] = useState(null);
 
   useEffect(() => { writeStore(TASK_CATEGORY_COLLAPSE_KEY, collapsedSections); }, [collapsedSections]);
 
@@ -3427,7 +3637,7 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
     const progressPct = done ? 100 : checklistTotal ? Math.round((checklistDone / checklistTotal) * 100) : (t.status === "In Progress" ? 45 : 0);
     const borderColor = done ? C.green : late.isLate ? C.red : sectionKey === "next" ? C.orange : priorityColor(t.priority);
     return (
-      <div key={t.id} onClick={() => setSelected(t)} style={{ background:selected?.id === t.id ? C.elevated : C.bg, border:"1px solid "+(selected?.id === t.id ? C.orange : C.border), borderLeft:"5px solid "+borderColor, borderRadius:16, padding:13, cursor:"pointer", boxShadow:sectionKey === "next" ? "0 14px 28px rgba(0,0,0,.22)" : "none", opacity:done ? .72 : 1 }}>
+      <div key={t.id} onClick={() => { if (t.isRoutine || String(t.id || "").startsWith("RT-")) setRoutinePopupTask(t); else setSelected(t); }} style={{ background:selected?.id === t.id ? C.elevated : C.bg, border:"1px solid "+(selected?.id === t.id ? C.orange : C.border), borderLeft:"5px solid "+borderColor, borderRadius:16, padding:13, cursor:"pointer", boxShadow:sectionKey === "next" ? "0 14px 28px rgba(0,0,0,.22)" : "none", opacity:done ? .72 : 1 }}>
         <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:12, alignItems:"start" }}>
           <div style={{ minWidth:0 }}>
             <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", marginBottom:7 }}>
@@ -3489,6 +3699,7 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
   };
 
   return (
+    <>
     <div style={{ ...PNL, padding:14 }}>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))", gap:10, marginBottom:14 }}>
         <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}>
@@ -3515,6 +3726,8 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
 
       {!ordered.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:24, background:C.bg, border:"1px dashed "+C.border, borderRadius:14 }}>No task found with the current filters.</div> : <div style={{ display:"grid", gap:12 }}>{filteredSections.map(renderSection)}</div>}
     </div>
+    {routinePopupTask && <RoutineTaskPopup task={routinePopupTask} onClose={() => setRoutinePopupTask(null)} onUpdate={onUpdate} onOpenDetails={(task) => setSelected(task)} />}
+    </>
   );
 }
 
@@ -5657,7 +5870,7 @@ function AfterglowApp() {
 
         <div style={{ flex:1, overflow:"auto", padding:isPhoneLayout ? 10 : isMobileLayout ? 14 : 20, minWidth:0 }}>
           {view === "dashboard" ? (
-            <AfterglowCommandHubV3 tasks={tasks} activeSpace={activeSpace} settings={safeSettings} goSpace={goSpace} setView={setView} setActiveSpace={setActiveSpace} setSelected={setSelected} setShowNewTask={setShowNewTask} setShowEndDayReview={setShowEndDayReview} onUpdate={updateTask} isPhoneLayout={isPhoneLayout} />
+            <AfterglowCommandHubV3 tasks={tasks} activeSpace={activeSpace} settings={safeSettings} goSpace={goSpace} setView={setView} setActiveSpace={setActiveSpace} setSelected={setSelected} setShowNewTask={setShowNewTask} setShowEndDayReview={setShowEndDayReview} onUpdate={updateTask} isPhoneLayout={isPhoneLayout} sendTodayDisciplineEmail={sendTodayDisciplineEmail} />
           ) : view === "boards" ? (
             <AfterglowBoardsV3 tasks={tasks} settings={safeSettings} setActiveSpace={setActiveSpace} setView={setView} setSelected={setSelected} onUpdate={updateTask} isPhoneLayout={isPhoneLayout} />
           ) : view === "database" ? (
