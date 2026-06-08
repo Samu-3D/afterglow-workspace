@@ -5149,17 +5149,6 @@ function AfterglowApp() {
     }
   }, [tasks]);
 
-  if (!auth.token) {
-    return (
-      <AuthGate
-        backendNotice={backendNotice}
-        backendBusy={backendBusy}
-        onLogin={handleBackendLogin}
-        onRegister={handleBackendRegister}
-      />
-    );
-  }
-
   const sp = SPACES.find(s => s.id === activeSpace) || SPACES[0];
   const deadlineMatches = useCallback((task, filter) => {
     if (filter === "All") return true;
@@ -5324,6 +5313,17 @@ function AfterglowApp() {
     const docs = readStore(DOCUMENTS_KEY, []);
     writeStore(DOCUMENTS_KEY, docs.filter(d => !String(d.id || "").startsWith("TEST-") && !String(d.title || "").toLowerCase().includes("test data")));
   }, []);
+
+  if (!auth.token) {
+    return (
+      <AuthGate
+        backendNotice={backendNotice}
+        backendBusy={backendBusy}
+        onLogin={handleBackendLogin}
+        onRegister={handleBackendRegister}
+      />
+    );
+  }
 
   const VIEWS = activeSpace === "mopas" ? ["list","board","table","calendar","Goals","documents","daily report","tender folder"] : ["list","board","table","calendar","Goals","documents"];
   const GLOBAL_VIEWS = ["dashboard", "boards", "database", "automations", "reports", "knowledge", "roadmap", "settings", "life os"];
