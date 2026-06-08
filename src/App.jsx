@@ -8,12 +8,12 @@ const C = {
 };
 
 const SPACES = [
-  { id: "wakeup", name: "Morning Command", icon: "◉", color: C.gold, folders: ["Morning Routine", "Reading", "Planning"], description: "Daily discipline engine: wake up, read, plan, and start with control." },
-  { id: "mopas", name: "MOPAS Mission Control", icon: "▦", color: C.blue, folders: ["Tenders Working On", "Normal MOPAS Tasks", "Follow-up", "Company Tasks", "Tender Search Log"], description: "Company operations, tender pipeline, follow-up, and execution control." },
-  { id: "health", name: "Health Energy System", icon: "◆", color: C.green, folders: ["Morning Workout", "Evening Run", "Recovery"], description: "Body energy, consistency, running, recovery, and discipline." },
-  { id: "drawing", name: "Creative Skill Lab", icon: "✎", color: C.purple, folders: ["DrawingBox Study", "43 Project", "Hybrid Style"], description: "DrawingBox, story research, 43 Project, visual style, and creative growth." },
-  { id: "afterglow", name: "AFTERGLOW Studio", icon: "✦", color: C.orange, folders: ["Brand System", "Social Media", "Portfolio"], description: "Your creative brand, portfolio, content, studio identity, and business assets." },
-  { id: "money", name: "Money & Freedom System", icon: "◈", color: C.gold, folders: ["Budget", "Investments", "Career Tools"], description: "Money decisions, savings, ITSINDA, planned purchases, and long-term freedom." },
+  { id: "wakeup", name: "Wake-up Discipline", icon: "▨", color: C.gold, folders: ["Morning Routine", "Reading", "Planning"], description: "Control your morning. Win the day." },
+  { id: "mopas", name: "MOPAS Operations", icon: "▨", color: C.blue, folders: ["Tenders Working On", "Normal MOPAS Tasks", "Follow-up", "Company Tasks", "Tender Search Log"], description: "Separate active tenders from normal operations." },
+  { id: "health", name: "Health & Fitness", icon: "▨", color: C.green, folders: ["Morning Workout", "Evening Run", "Recovery"], description: "Energy, confidence, mental strength." },
+  { id: "drawing", name: "Drawing / Creative", icon: "▨", color: C.purple, folders: ["DrawingBox Study", "43 Project", "Hybrid Style"], description: "Build the skill for your creative future." },
+  { id: "afterglow", name: "AFTERGLOW Brand", icon: "▨", color: C.orange, folders: ["Brand System", "Social Media", "Portfolio"], description: "Your creative identity." },
+  { id: "money", name: "Money & Savings", icon: "▨", color: C.gold, folders: ["Budget", "Investments", "Career Tools"], description: "Build freedom, not just survival." },
 ];
 
 const STATUSES = ["To Do", "In Progress", "Done", "Blocked"];
@@ -2829,206 +2829,6 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
 }
 
 
-
-const SPACE_OS_BLUEPRINT = {
-  wakeup: {
-    label:"Morning Command",
-    mission:"Win the first 3 hours so the rest of the day follows your plan, not your mood.",
-    formula:"wake-up + reading + body activation + top 3 plan = control",
-    rhythm:["06:00 wake up", "06:10 read", "06:50 mobility", "08:15 choose top 3"],
-    boards:["Daily routine", "Reading", "Planning", "Discipline streak"],
-    next:"Complete the next routine block and mark it done immediately."
-  },
-  mopas: {
-    label:"MOPAS Mission Control",
-    mission:"Separate normal operations from active tender work and protect every deadline.",
-    formula:"deadline risk + bid value + missing documents + owner follow-up = priority",
-    rhythm:["Search tenders", "Review requirements", "Prepare documents", "Follow up team", "Submit evidence"],
-    boards:["Tender Pipeline", "Normal Tasks", "Follow-up", "Company Documents"],
-    next:"Open the most urgent tender or follow-up task and move it to In Progress."
-  },
-  health: {
-    label:"Health Energy System",
-    mission:"Build the body that can carry your ambition without burning out.",
-    formula:"morning mobility + evening training + recovery + water = energy",
-    rhythm:["Mobility", "Workout/run", "Stretch", "Recovery", "Sleep"],
-    boards:["Morning Workout", "Evening Run", "Recovery", "Energy Log"],
-    next:"Do the smallest workout action now: dress, warm up, then complete the block."
-  },
-  drawing: {
-    label:"Creative Skill Lab",
-    mission:"Turn drawing practice into real visual power for 3D, animation, and the 43 Project.",
-    formula:"line practice + study + saved output + project note = skill growth",
-    rhythm:["Warm-up lines", "Study lesson", "Sketch evidence", "43 Project note"],
-    boards:["DrawingBox", "43 Project", "References", "Hybrid Style"],
-    next:"Leave evidence today: one sketch, one reference, or one story/design note."
-  },
-  afterglow: {
-    label:"AFTERGLOW Studio",
-    mission:"Build the brand that makes your creative work visible, trusted, and sellable.",
-    formula:"asset + story + post idea + portfolio proof = brand growth",
-    rhythm:["Improve asset", "Plan content", "Save portfolio proof", "Review next offer"],
-    boards:["Brand System", "Social Media", "Portfolio", "Client Offers"],
-    next:"Create or improve one brand asset before the day closes."
-  },
-  money: {
-    label:"Money & Freedom System",
-    mission:"Control cash daily, protect weekly savings, and fund the tools that change your future.",
-    formula:"income - expenses + protected savings + career investment = freedom score",
-    rhythm:["Check balance", "Record expense", "Save first", "Review goals", "Plan tomorrow"],
-    boards:["Daily Ledger", "ITSINDA", "Planned Purchases", "Future Goals"],
-    next:"Record today’s money and protect the next saving action."
-  },
-};
-
-const taskScoreFormula = (task = {}) => {
-  if (task.status === "Done") return -100;
-  let score = 10;
-  const diff = isDateKey(task.due) ? daysBetweenLocal(localTodayISO(), task.due) : null;
-  if (task.priority === "Urgent") score += 35;
-  if (task.priority === "High") score += 22;
-  if (task.status === "In Progress") score += 14;
-  if (task.status === "Blocked") score -= 8;
-  if (diff !== null && diff < 0) score += 40 + Math.min(20, Math.abs(diff));
-  if (diff === 0) score += 32;
-  if (diff === 1) score += 18;
-  if (diff !== null && diff > 1 && diff <= 7) score += 10;
-  if (task.isRoutine && task.routineDate === localTodayISO()) score += 12;
-  if (isMopasTenderWork(task)) score += 16;
-  if (task.space === "mopas") score += 5;
-  return Math.max(0, Math.round(score));
-};
-
-const taskFormulaReason = (task = {}) => {
-  const reasons = [];
-  const diff = isDateKey(task.due) ? daysBetweenLocal(localTodayISO(), task.due) : null;
-  if (task.priority === "Urgent") reasons.push("urgent");
-  if (task.priority === "High") reasons.push("high priority");
-  if (diff !== null && diff < 0) reasons.push(`late ${Math.abs(diff)}d`);
-  if (diff === 0) reasons.push("due today");
-  if (diff === 1) reasons.push("due tomorrow");
-  if (task.status === "In Progress") reasons.push("already started");
-  if (task.isRoutine) reasons.push("routine");
-  if (isMopasTenderWork(task)) reasons.push("tender work");
-  return reasons.length ? reasons.join(" · ") : "normal priority";
-};
-
-function MiniProgressBar({ value, color = C.orange, height = 7 }) {
-  return (
-    <div style={{ height, borderRadius:999, background:C.elevated, overflow:"hidden" }}>
-      <div style={{ width:`${Math.max(0, Math.min(100, Number(value) || 0))}%`, height:"100%", background:color, borderRadius:999 }} />
-    </div>
-  );
-}
-
-function SpaceOperatingSystemPanel({ activeSpace, tasks = [] }) {
-  const blueprint = SPACE_OS_BLUEPRINT[activeSpace] || SPACE_OS_BLUEPRINT.wakeup;
-  const spaceTasks = (Array.isArray(tasks) ? tasks : []).filter(t => t.space === activeSpace);
-  const open = spaceTasks.filter(t => t.status !== "Done");
-  const done = spaceTasks.filter(t => t.status === "Done");
-  const late = open.filter(isLateTask);
-  const today = open.filter(t => t.due === localTodayISO() || (t.isRoutine && t.routineDate === localTodayISO()));
-  const health = spaceTasks.length ? Math.round((done.length / Math.max(1, spaceTasks.length)) * 100) : 0;
-  const systemColor = SPACES.find(s => s.id === activeSpace)?.color || C.orange;
-  return (
-    <div style={{ ...PNL, background:C.bg, borderLeft:"5px solid "+systemColor, marginBottom:14 }}>
-      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1.4fr) minmax(220px,.8fr)", gap:14, alignItems:"start" }}>
-        <div style={{ minWidth:0 }}>
-          <div style={{ color:systemColor, fontSize:11, letterSpacing:2, fontWeight:900 }}>SPACE OPERATING SYSTEM</div>
-          <h2 style={{ margin:"4px 0 6px", fontSize:20, color:C.cream }}>{blueprint.label}</h2>
-          <div style={{ color:C.creamSoft, fontSize:13, lineHeight:1.55 }}>{blueprint.mission}</div>
-          <div style={{ marginTop:10, padding:10, background:C.surface, border:"1px solid "+C.border, borderRadius:12 }}>
-            <div style={{ color:C.gold, fontSize:11, letterSpacing:1.5, fontWeight:900 }}>FORMULA</div>
-            <div style={{ color:C.cream, fontWeight:800, marginTop:4 }}>{blueprint.formula}</div>
-          </div>
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:10 }}>
-            {blueprint.boards.map(board => <Badge key={board} color={systemColor}>{board}</Badge>)}
-          </div>
-        </div>
-        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:12 }}>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:10 }}>
-            <KPIBox label="Open" value={open.length} sub="active items" color={systemColor} />
-            <KPIBox label="Today" value={today.length} sub="needs focus" color={today.length ? C.orange : C.green} />
-            <KPIBox label="Late" value={late.length} sub="recovery" color={late.length ? C.red : C.green} />
-            <KPIBox label="Health" value={`${health}%`} sub="done ratio" color={health >= 60 ? C.green : C.gold} />
-          </div>
-          <MiniProgressBar value={health} color={health >= 60 ? C.green : C.gold} />
-          <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5, marginTop:10 }}><b style={{ color:C.cream }}>Next move:</b> {blueprint.next}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DailyRoutineEnginePanel({ tasks = [], onUpdate, activeSpace = "wakeup" }) {
-  const [open, setOpen] = useState(true);
-  const todayKey = localTodayISO();
-  const now = new Date();
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const timeToMinutes = (time) => {
-    const [h, m] = String(time || "00:00").split(":").map(Number);
-    return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
-  };
-  const todayRoutines = (Array.isArray(tasks) ? tasks : []).filter(t => t.isRoutine && t.routineDate === todayKey);
-  const routineTotal = DAILY_ROUTINES.filter(r => !Array.isArray(r.days) || r.days.includes((parseDateKey(todayKey) || new Date()).getDay())).length;
-  const routineDone = todayRoutines.filter(t => t.status === "Done").length;
-  const routinePct = routineTotal ? Math.round((routineDone / routineTotal) * 100) : 0;
-  const currentBlock = TODAY_DISCIPLINE_BLOCKS.find(block => nowMinutes >= timeToMinutes(block.start) && nowMinutes < timeToMinutes(block.end));
-  const nextRoutine = sortTasksSmart(todayRoutines.filter(t => t.status !== "Done"))[0];
-  const groups = [
-    ["Morning", ["wake-up", "read-20-pages", "morning-workout", "plan-top-3", "check-wallet-balance"]],
-    ["Workday", ["search-mopas-tenders"]],
-    ["Evening", ["evening-health-training", "drawingbox-study", "43-project-creative-study"]],
-    ["Night", ["afterglow-brand-work", "record-today-money", "money-savings-review", "end-day-review"]],
-    ["Weekly", ["itsinda-weekly-savings"]],
-  ];
-  const routineByKey = new Map(todayRoutines.map(t => [t.routineKey, t]));
-  const mark = (task, status) => {
-    if (!task || typeof onUpdate !== "function") return;
-    onUpdate({ ...task, status, completedAt:status === "Done" ? new Date().toISOString() : "", locked:status === "Done" });
-  };
-  return (
-    <div style={{ ...PNL, background:C.bg, borderLeft:"5px solid "+C.orange, marginBottom:14 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-        <div>
-          <div style={{ color:C.orange, fontSize:11, letterSpacing:2, fontWeight:900 }}>DAILY ROUTINE ENGINE</div>
-          <h2 style={{ margin:"4px 0 4px", fontSize:20 }}>Today Discipline Flow</h2>
-          <div style={{ color:C.creamSoft, fontSize:12 }}>{currentBlock ? `Current block: ${currentBlock.start}-${currentBlock.end} · ${currentBlock.title}` : "Current block: outside planned schedule"}</div>
-        </div>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-          <Badge color={routinePct >= 70 ? C.green : routinePct >= 35 ? C.gold : C.red}>{routineDone}/{routineTotal} done</Badge>
-          <Btn small ghost onClick={() => setOpen(v => !v)}>{open ? "Collapse" : "Open"}</Btn>
-        </div>
-      </div>
-      <div style={{ margin:"10px 0" }}><MiniProgressBar value={routinePct} color={routinePct >= 70 ? C.green : C.gold} height={8} /></div>
-      {nextRoutine && <div style={{ display:"flex", justifyContent:"space-between", gap:10, flexWrap:"wrap", alignItems:"center", background:C.surface, border:"1px solid "+C.border, borderRadius:12, padding:10, marginBottom:open ? 10 : 0 }}>
-        <div style={{ minWidth:0 }}><div style={{ color:C.gold, fontSize:11, letterSpacing:1.5, fontWeight:900 }}>NEXT ROUTINE ACTION</div><div style={{ fontWeight:900, color:C.cream }}>{nextRoutine.time ? nextRoutine.time + " · " : ""}{nextRoutine.title}</div><div style={{ color:C.muted, fontSize:12 }}>{nextRoutine.goal || nextRoutine.details || "Complete this block and mark it done."}</div></div>
-        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}><Btn small ghost onClick={() => mark(nextRoutine, "In Progress")}>Start</Btn><Btn small orange onClick={() => mark(nextRoutine, "Done")}>Done</Btn></div>
-      </div>}
-      {open && <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(210px, 1fr))", gap:10 }}>
-        {groups.map(([label, keys]) => {
-          const items = keys.map(key => routineByKey.get(key) || DAILY_ROUTINES.find(r => r.routineKey === key)).filter(Boolean);
-          if (!items.length) return null;
-          const groupDone = items.filter(item => item.status === "Done").length;
-          return <div key={label} style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:12, padding:10 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", gap:8, marginBottom:8 }}><b style={{ color:C.cream }}>{label}</b><Badge color={groupDone === items.length ? C.green : C.gold}>{groupDone}/{items.length}</Badge></div>
-            {items.map(item => {
-              const isTask = !!item.id;
-              const done = item.status === "Done";
-              const title = item.title || item.routineKey;
-              return <div key={item.routineKey || item.id} style={{ display:"grid", gridTemplateColumns:"auto minmax(0,1fr) auto", gap:8, alignItems:"center", padding:"8px 0", borderTop:"1px solid "+C.border }}>
-                <span style={{ color:done ? C.green : C.orange }}>{done ? "✓" : isTask && item.status === "In Progress" ? "↻" : "○"}</span>
-                <div style={{ minWidth:0 }}><div style={{ color:done ? C.muted : C.cream, fontWeight:800, fontSize:12, textDecoration:done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.time ? item.time + " · " : ""}{title}</div><div style={{ color:C.muted, fontSize:10, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{isTask ? (item.status || "To Do") : "Not generated for today"}</div></div>
-                {isTask && !done && <Btn small ghost onClick={() => mark(item, "Done")}>Done</Btn>}
-              </div>;
-            })}
-          </div>;
-        })}
-      </div>}
-    </div>
-  );
-}
-
 function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
   const [moneyEntries, setMoneyEntries] = useState(() => readStore(MONEY_ENTRIES_KEY, []));
   const [purchaseGoals, setPurchaseGoals] = useState(() => readStore(PURCHASE_GOALS_KEY, DEFAULT_PURCHASE_GOALS));
@@ -3050,12 +2850,6 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
   const safePurchases = Array.isArray(purchaseGoals) ? purchaseGoals : [];
   const safeFutureGoals = Array.isArray(futureGoals) ? futureGoals : [];
 
-  const daysLeftInMonth = useMemo(() => {
-    const d = new Date();
-    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    return Math.max(1, last - d.getDate() + 1);
-  }, [todayKey]);
-
   const moneyStats = useMemo(() => {
     const entries = Array.isArray(moneyEntries) ? moneyEntries : [];
     const weekRange = getWeekRangeKeys(new Date());
@@ -3070,23 +2864,20 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
     const monthlySavings = sum(inMonth, "savings");
     const monthIncome = sum(inMonth, "income");
     const monthExpense = sum(inMonth, "expense");
-    const monthCareer = inMonth.filter(e => e.type === "expense" && /career|tool|laptop|tablet|camera|course|internet|software/i.test(String(e.category || e.note || ""))).reduce((total, e) => total + numberValue(e.amount), 0);
     const itsindaThisWeek = inWeek.filter(e => String(e.category || "").toLowerCase().includes("itsinda") || e.linkType === "itsinda").reduce((total, e) => total + numberValue(e.amount), 0);
     const itsindaPaid = itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT || tasks.some(t => t.routineKey === "itsinda-weekly-savings" && t.routineDate >= weekRange.start && t.routineDate <= weekRange.end && t.status === "Done");
     const totalPurchaseSaved = safePurchases.reduce((total, goal) => total + numberValue(goal.savedAmount), 0);
     const totalPurchaseTarget = safePurchases.reduce((total, goal) => total + numberValue(goal.targetAmount), 0);
     const totalFutureSaved = safeFutureGoals.reduce((total, goal) => total + numberValue(goal.savedAmount), 0);
     const totalFutureTarget = safeFutureGoals.reduce((total, goal) => total + numberValue(goal.targetAmount), 0);
-    const freedomScore = monthIncome ? Math.max(0, Math.min(100, Math.round(((monthlySavings + itsindaThisWeek + Math.max(0, monthIncome - monthExpense)) / monthIncome) * 100))) : 50;
-    const dailySafeSpend = monthIncome ? Math.max(0, Math.floor(((monthIncome * 0.5) - monthExpense) / daysLeftInMonth)) : 0;
     return {
       todayIncome, todayExpense, todaySavings, todayNet:todayIncome - todayExpense,
-      weeklySavings, monthlySavings, monthIncome, monthExpense, monthCareer, monthNet:monthIncome - monthExpense,
-      itsindaThisWeek, itsindaPaid, freedomScore, dailySafeSpend,
-      purchaseProgress:moneyProgress(totalPurchaseSaved, totalPurchaseTarget), futureProgress:moneyProgress(totalFutureSaved, totalFutureTarget),
-      totalPurchaseSaved, totalPurchaseTarget, totalFutureSaved, totalFutureTarget,
+      weeklySavings, monthlySavings, monthIncome, monthExpense, monthNet:monthIncome - monthExpense,
+      itsindaThisWeek, itsindaPaid,
+      purchaseProgress:moneyProgress(totalPurchaseSaved, totalPurchaseTarget),
+      futureProgress:moneyProgress(totalFutureSaved, totalFutureTarget),
     };
-  }, [moneyEntries, tasks, todayKey, monthStartKey, safePurchases, safeFutureGoals, daysLeftInMonth]);
+  }, [moneyEntries, tasks, todayKey, monthStartKey, safePurchases, safeFutureGoals]);
 
   const resetMoneyForm = () => setMoneyForm({ id:"", date:todayKey, type:"expense", amount:"", category:"", note:"", linkType:"none", linkedId:"" });
   const resetPurchaseForm = () => setPurchaseForm({ id:"", title:"", targetAmount:"", savedAmount:"", priority:"High", deadline:"", note:"" });
@@ -3096,15 +2887,29 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
     if (!entry || entry.type !== "savings") return;
     const amount = numberValue(entry.amount) * direction;
     if (!amount) return;
-    if (entry.linkType === "purchase" && entry.linkedId) setPurchaseGoals(prev => (Array.isArray(prev) ? prev : []).map(goal => goal.id === entry.linkedId ? { ...goal, savedAmount:Math.max(0, numberValue(goal.savedAmount) + amount) } : goal));
-    if (entry.linkType === "future" && entry.linkedId) setFutureGoals(prev => (Array.isArray(prev) ? prev : []).map(goal => goal.id === entry.linkedId ? { ...goal, savedAmount:Math.max(0, numberValue(goal.savedAmount) + amount) } : goal));
+    if (entry.linkType === "purchase" && entry.linkedId) {
+      setPurchaseGoals(prev => (Array.isArray(prev) ? prev : []).map(goal => goal.id === entry.linkedId ? { ...goal, savedAmount:Math.max(0, numberValue(goal.savedAmount) + amount) } : goal));
+    }
+    if (entry.linkType === "future" && entry.linkedId) {
+      setFutureGoals(prev => (Array.isArray(prev) ? prev : []).map(goal => goal.id === entry.linkedId ? { ...goal, savedAmount:Math.max(0, numberValue(goal.savedAmount) + amount) } : goal));
+    }
   };
 
   const normalizeMoneyEntryFromForm = (form) => {
     const type = form.type || "expense";
     const linkType = type === "savings" ? (form.linkType || "none") : "none";
     const category = linkType === "itsinda" ? "ITSINDA" : (form.category || (type === "savings" ? "Savings" : type === "income" ? "Income" : "Expense"));
-    return { id: form.id || "ME-" + Date.now(), date: isDateKey(form.date) ? form.date : todayKey, type, amount:numberValue(form.amount), category, note:form.note || "", linkType, linkedId: linkType === "purchase" || linkType === "future" ? (form.linkedId || "") : "", updatedAt:new Date().toISOString() };
+    return {
+      id: form.id || "ME-" + Date.now(),
+      date: isDateKey(form.date) ? form.date : todayKey,
+      type,
+      amount:numberValue(form.amount),
+      category,
+      note:form.note || "",
+      linkType,
+      linkedId: linkType === "purchase" || linkType === "future" ? (form.linkedId || "") : "",
+      updatedAt:new Date().toISOString(),
+    };
   };
 
   const saveMoneyEntry = () => {
@@ -3112,17 +2917,37 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
     if (!entry.amount) return;
     if (moneyForm.id) {
       const oldEntry = safeEntries.find(e => e.id === moneyForm.id);
-      applyGoalImpact(oldEntry, -1); applyGoalImpact(entry, 1);
+      applyGoalImpact(oldEntry, -1);
+      applyGoalImpact(entry, 1);
       setMoneyEntries(prev => (Array.isArray(prev) ? prev : []).map(e => e.id === moneyForm.id ? entry : e));
-    } else { applyGoalImpact(entry, 1); setMoneyEntries(prev => [entry, ...(Array.isArray(prev) ? prev : [])]); }
+    } else {
+      applyGoalImpact(entry, 1);
+      setMoneyEntries(prev => [entry, ...(Array.isArray(prev) ? prev : [])]);
+    }
     resetMoneyForm();
   };
 
   const editMoneyEntry = (entry) => {
-    setMoneyMode("ledger"); setShowMoreMoney(true);
-    setMoneyForm({ id:entry.id || "", date:entry.date || todayKey, type:entry.type || "expense", amount:String(entry.amount || ""), category:entry.category || "", note:entry.note || "", linkType:entry.linkType || (String(entry.category || "").toLowerCase().includes("itsinda") ? "itsinda" : "none"), linkedId:entry.linkedId || "" });
+    setMoneyMode("ledger");
+    setShowMoreMoney(true);
+    setMoneyForm({
+      id:entry.id || "",
+      date:entry.date || todayKey,
+      type:entry.type || "expense",
+      amount:String(entry.amount || ""),
+      category:entry.category || "",
+      note:entry.note || "",
+      linkType:entry.linkType || (String(entry.category || "").toLowerCase().includes("itsinda") ? "itsinda" : "none"),
+      linkedId:entry.linkedId || "",
+    });
   };
-  const deleteMoneyEntry = (entry) => { applyGoalImpact(entry, -1); setMoneyEntries(prev => (Array.isArray(prev) ? prev : []).filter(e => e.id !== entry.id)); if (moneyForm.id === entry.id) resetMoneyForm(); };
+
+  const deleteMoneyEntry = (entry) => {
+    applyGoalImpact(entry, -1);
+    setMoneyEntries(prev => (Array.isArray(prev) ? prev : []).filter(e => e.id !== entry.id));
+    if (moneyForm.id === entry.id) resetMoneyForm();
+  };
+
   const markItsindaPaid = () => {
     const entry = { id:"ME-ITSINDA-" + Date.now(), date:todayKey, type:"savings", amount:ITSINDA_WEEKLY_AMOUNT, category:"ITSINDA", note:"Weekly ITSINDA contribution", linkType:"itsinda", linkedId:"", updatedAt:new Date().toISOString() };
     setMoneyEntries(prev => [entry, ...(Array.isArray(prev) ? prev : [])]);
@@ -3130,142 +2955,342 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
     if (fridayTask && typeof onUpdate === "function") onUpdate({ ...fridayTask, status:"Done", completedAt:new Date().toISOString(), locked:true });
   };
 
-  const savePurchaseGoal = () => { if (!String(purchaseForm.title || "").trim()) return; const goal = { ...purchaseForm, id:purchaseForm.id || "PG-" + Date.now(), title:purchaseForm.title.trim(), targetAmount:numberValue(purchaseForm.targetAmount), savedAmount:numberValue(purchaseForm.savedAmount), priority:purchaseForm.priority || "High", deadline:purchaseForm.deadline || "", note:purchaseForm.note || "" }; setPurchaseGoals(prev => purchaseForm.id ? (Array.isArray(prev) ? prev : []).map(g => g.id === purchaseForm.id ? goal : g) : [goal, ...(Array.isArray(prev) ? prev : [])]); resetPurchaseForm(); };
-  const saveFutureGoal = () => { if (!String(futureForm.title || "").trim()) return; const goal = { ...futureForm, id:futureForm.id || "FG-" + Date.now(), title:futureForm.title.trim(), targetAmount:numberValue(futureForm.targetAmount), savedAmount:numberValue(futureForm.savedAmount), deadline:futureForm.deadline || "", category:futureForm.category || "Life Goal", note:futureForm.note || "" }; setFutureGoals(prev => futureForm.id ? (Array.isArray(prev) ? prev : []).map(g => g.id === futureForm.id ? goal : g) : [goal, ...(Array.isArray(prev) ? prev : [])]); resetFutureForm(); };
-  const deletePurchaseGoal = (id) => { setPurchaseGoals(prev => (Array.isArray(prev) ? prev : []).filter(goal => goal.id !== id)); if (purchaseForm.id === id) resetPurchaseForm(); };
-  const deleteFutureGoal = (id) => { setFutureGoals(prev => (Array.isArray(prev) ? prev : []).filter(goal => goal.id !== id)); if (futureForm.id === id) resetFutureForm(); };
-  const goalLabel = (entry) => entry.linkType === "itsinda" || String(entry.category || "").toLowerCase().includes("itsinda") ? "ITSINDA weekly saving" : entry.linkType === "purchase" ? (safePurchases.find(goal => goal.id === entry.linkedId)?.title || "Planned purchase") : entry.linkType === "future" ? (safeFutureGoals.find(goal => goal.id === entry.linkedId)?.title || "Future goal") : "No goal link";
-  const openMoneyEntry = (type = "expense", category = "") => { setMoneyMode("ledger"); setShowMoreMoney(true); setMoneyForm({ id:"", date:todayKey, type, amount:"", category, note:"", linkType:type === "savings" && category === "ITSINDA" ? "itsinda" : "none", linkedId:"" }); };
-
-  const splitTargets = [
-    { label:"Needs 50%", value:moneyStats.monthIncome * 0.5, used:moneyStats.monthExpense, color:C.blue },
-    { label:"Savings 20%", value:moneyStats.monthIncome * 0.2, used:moneyStats.monthlySavings, color:C.gold },
-    { label:"Career Tools 20%", value:moneyStats.monthIncome * 0.2, used:moneyStats.monthCareer, color:C.purple },
-    { label:"Personal 10%", value:moneyStats.monthIncome * 0.1, used:Math.max(0, moneyStats.monthExpense - moneyStats.monthCareer), color:C.orange },
-  ];
-  const nextMoneyMove = !moneyStats.itsindaPaid ? "Protect ITSINDA first: save 20,000 RWF this week." : moneyStats.todayExpense > moneyStats.todayIncome ? "Reduce spending today or add expected income note." : moneyStats.monthlySavings < moneyStats.monthIncome * 0.2 ? "Add savings before spending more." : "Good direction. Fund the next planned purchase or future goal.";
-  const recentEntries = safeEntries.slice(0, showMoreMoney ? 12 : 5);
-
-  const MoneyCard = ({ label, value, color, sub }) => <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12 }}><div style={{ color, fontWeight:950, fontSize:18, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{value}</div><div style={{ color:C.creamSoft, fontSize:11, marginTop:4, textTransform:"uppercase", letterSpacing:1 }}>{label}</div>{sub && <div style={{ color:C.muted, fontSize:11, marginTop:4 }}>{sub}</div>}</div>;
-  const GoalRow = ({ goal, type }) => {
-    const color = type === "purchase" ? C.gold : C.blue; const pct = moneyProgress(goal.savedAmount, goal.targetAmount);
-    return <div style={{ border:"1px solid "+C.border, borderLeft:"4px solid "+color, borderRadius:12, padding:12, background:C.surface }}>
-      <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"flex-start" }}><div style={{ minWidth:0 }}><div style={{ color:C.cream, fontWeight:900, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{goal.title}</div><div style={{ color:C.muted, fontSize:11, marginTop:3 }}>{type === "purchase" ? goal.priority || "Normal" : goal.category || "Life Goal"}{goal.deadline ? " · " + goal.deadline : ""}</div></div><Badge color={color}>{pct}%</Badge></div>
-      <div style={{ marginTop:8 }}><MiniProgressBar value={pct} color={color} /></div>
-      <div style={{ color:C.creamSoft, fontSize:11, marginTop:6 }}>{rwf(goal.savedAmount)} saved / {rwf(goal.targetAmount)} target</div>{goal.note && <div style={{ color:C.muted, fontSize:11, marginTop:4 }}>{goal.note}</div>}
-      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:8 }}><Btn small ghost onClick={() => { if (type === "purchase") setPurchaseForm({ ...goal, targetAmount:String(goal.targetAmount || ""), savedAmount:String(goal.savedAmount || "") }); else setFutureForm({ ...goal, targetAmount:String(goal.targetAmount || ""), savedAmount:String(goal.savedAmount || "") }); }}>Edit</Btn><Btn small orange onClick={() => { setMoneyMode("ledger"); setMoneyForm({ id:"", date:todayKey, type:"savings", amount:"", category:type === "purchase" ? "Purchase saving" : "Future goal saving", note:`Saving for ${goal.title}`, linkType:type, linkedId:goal.id }); }}>Add Saving</Btn><Btn small ghost style={{ color:C.red, borderColor:C.red }} onClick={() => type === "purchase" ? deletePurchaseGoal(goal.id) : deleteFutureGoal(goal.id)}>Delete</Btn></div>
-    </div>;
+  const savePurchaseGoal = () => {
+    if (!String(purchaseForm.title || "").trim()) return;
+    const goal = { ...purchaseForm, id:purchaseForm.id || "PG-" + Date.now(), title:purchaseForm.title.trim(), targetAmount:numberValue(purchaseForm.targetAmount), savedAmount:numberValue(purchaseForm.savedAmount), priority:purchaseForm.priority || "High", deadline:purchaseForm.deadline || "", note:purchaseForm.note || "" };
+    setPurchaseGoals(prev => purchaseForm.id ? (Array.isArray(prev) ? prev : []).map(g => g.id === purchaseForm.id ? goal : g) : [goal, ...(Array.isArray(prev) ? prev : [])]);
+    resetPurchaseForm();
   };
+
+  const saveFutureGoal = () => {
+    if (!String(futureForm.title || "").trim()) return;
+    const goal = { ...futureForm, id:futureForm.id || "FG-" + Date.now(), title:futureForm.title.trim(), targetAmount:numberValue(futureForm.targetAmount), savedAmount:numberValue(futureForm.savedAmount), deadline:futureForm.deadline || "", category:futureForm.category || "Life Goal", note:futureForm.note || "" };
+    setFutureGoals(prev => futureForm.id ? (Array.isArray(prev) ? prev : []).map(g => g.id === futureForm.id ? goal : g) : [goal, ...(Array.isArray(prev) ? prev : [])]);
+    resetFutureForm();
+  };
+
+  const deletePurchaseGoal = (id) => {
+    setPurchaseGoals(prev => (Array.isArray(prev) ? prev : []).filter(goal => goal.id !== id));
+    if (purchaseForm.id === id) resetPurchaseForm();
+  };
+
+  const deleteFutureGoal = (id) => {
+    setFutureGoals(prev => (Array.isArray(prev) ? prev : []).filter(goal => goal.id !== id));
+    if (futureForm.id === id) resetFutureForm();
+  };
+
+  const goalLabel = (entry) => {
+    if (entry.linkType === "itsinda" || String(entry.category || "").toLowerCase().includes("itsinda")) return "ITSINDA weekly saving";
+    if (entry.linkType === "purchase") return safePurchases.find(goal => goal.id === entry.linkedId)?.title || "Planned purchase";
+    if (entry.linkType === "future") return safeFutureGoals.find(goal => goal.id === entry.linkedId)?.title || "Future goal";
+    return "No goal link";
+  };
+
+  const SmallProgress = ({ value, color }) => (
+    <div style={{ height:7, borderRadius:999, background:C.elevated, overflow:"hidden", marginTop:8 }}>
+      <div style={{ width:`${Math.max(0, Math.min(100, Number(value) || 0))}%`, height:"100%", background:color, borderRadius:999 }} />
+    </div>
+  );
+
+  const MoneyMiniCard = ({ label, value, color, sub }) => (
+    <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:10, padding:12 }}>
+      <div style={{ color:C.creamSoft, fontSize:10, letterSpacing:1.2, textTransform:"uppercase" }}>{label}</div>
+      <div style={{ color, fontWeight:900, fontSize:18, marginTop:4 }}>{value}</div>
+      {sub && <div style={{ color:C.muted, fontSize:11, marginTop:2 }}>{sub}</div>}
+    </div>
+  );
+
+  const moneyCards = [
+    { l:"Today Income", v:rwf(moneyStats.todayIncome), c:C.green },
+    { l:"Today Expense", v:rwf(moneyStats.todayExpense), c:C.red },
+    { l:"Today Net", v:rwf(moneyStats.todayNet), c:moneyStats.todayNet >= 0 ? C.green : C.red },
+    { l:"Weekly Savings", v:rwf(moneyStats.weeklySavings), c:C.gold },
+    { l:"Monthly Savings", v:rwf(moneyStats.monthlySavings), c:C.blue },
+    { l:"ITSINDA", v:moneyStats.itsindaPaid ? "Paid" : "Pending", c:moneyStats.itsindaPaid ? C.green : C.orange },
+    { l:"Purchase Goals", v:`${moneyStats.purchaseProgress}%`, c:C.gold },
+    { l:"Future Goals", v:`${moneyStats.futureProgress}%`, c:C.blue },
+  ];
+
+  const GoalRow = ({ goal, type }) => {
+    const color = type === "purchase" ? C.gold : C.blue;
+    const pct = moneyProgress(goal.savedAmount, goal.targetAmount);
+    return (
+      <div style={{ border:"1px solid "+C.border, borderLeft:"4px solid "+color, borderRadius:10, padding:10, background:C.surface }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"flex-start" }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ color:C.cream, fontWeight:900, fontSize:13, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{goal.title}</div>
+            <div style={{ color:C.muted, fontSize:11, marginTop:3 }}>{type === "purchase" ? goal.priority || "Normal" : goal.category || "Life Goal"}{goal.deadline ? " · " + goal.deadline : ""}</div>
+          </div>
+          <Badge color={color}>{pct}%</Badge>
+        </div>
+        <SmallProgress value={pct} color={color} />
+        <div style={{ color:C.creamSoft, fontSize:11, marginTop:6 }}>{rwf(goal.savedAmount)} saved / {rwf(goal.targetAmount)} target</div>
+        {goal.note && <div style={{ color:C.muted, fontSize:11, marginTop:4 }}>{goal.note}</div>}
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:8 }}>
+          <Btn small ghost onClick={() => {
+            if (type === "purchase") setPurchaseForm({ ...goal, targetAmount:String(goal.targetAmount || ""), savedAmount:String(goal.savedAmount || "") });
+            else setFutureForm({ ...goal, targetAmount:String(goal.targetAmount || ""), savedAmount:String(goal.savedAmount || "") });
+          }}>Edit</Btn>
+          <Btn small ghost onClick={() => {
+            setMoneyMode("ledger");
+            setShowMoreMoney(true);
+            setMoneyForm({ id:"", date:todayKey, type:"savings", amount:"", category:type === "purchase" ? "Purchase saving" : "Future goal saving", note:`Saving for ${goal.title}`, linkType:type, linkedId:goal.id });
+          }}>Add Saving</Btn>
+          <Btn small ghost style={{ color:C.red, borderColor:C.red }} onClick={() => type === "purchase" ? deletePurchaseGoal(goal.id) : deleteFutureGoal(goal.id)}>Delete</Btn>
+        </div>
+      </div>
+    );
+  };
+
+  const recentEntries = safeEntries.slice(0, showMoreMoney ? 12 : 5);
 
   return (
     <div style={{ ...PNL, minWidth:0, borderLeft:"5px solid "+C.gold, marginBottom:16 }}>
-      <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1.2fr) minmax(240px,.8fr)", gap:14, alignItems:"stretch", marginBottom:14 }}>
-        <div style={{ minWidth:0 }}>
-          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>MONEY & FREEDOM SYSTEM</div>
-          <h2 style={{ margin:"4px 0 5px", color:C.cream, fontSize:24 }}>Financial Command Center</h2>
-          <div style={{ color:C.creamSoft, fontSize:13, lineHeight:1.55 }}>Airtable-style ledger + savings formula + goal funding. Every entry should answer: income, expense, savings, or future investment?</div>
-          <div style={{ marginTop:10, padding:12, borderRadius:14, background:C.bg, border:"1px solid "+C.border }}><div style={{ color:C.gold, fontSize:11, letterSpacing:1.5, fontWeight:900 }}>NEXT MONEY MOVE</div><div style={{ color:C.cream, fontWeight:900, marginTop:4 }}>{nextMoneyMove}</div></div>
+      <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr) auto", gap:12, alignItems:"start", marginBottom:14 }}>
+        <div>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>MONEY & SAVINGS / FINANCIAL HEALTH</div>
+          <h2 style={{ margin:"4px 0 5px", color:C.cream, fontSize:22 }}>Financial Health</h2>
+          <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5 }}>Income, expenses, ITSINDA, planned purchases, and future goals are now connected. Savings can update a specific goal automatically.</div>
         </div>
-        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:14 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center" }}><div><div style={{ color:C.creamSoft, fontSize:11, letterSpacing:1 }}>FREEDOM SCORE</div><div style={{ color:moneyStats.freedomScore >= 65 ? C.green : C.gold, fontSize:34, fontWeight:950 }}>{moneyStats.freedomScore}%</div></div><Badge color={moneyStats.monthNet >= 0 ? C.green : C.red}>{rwf(moneyStats.monthNet)} net</Badge></div>
-          <MiniProgressBar value={moneyStats.freedomScore} color={moneyStats.freedomScore >= 65 ? C.green : C.gold} height={9} />
-          <div style={{ color:C.muted, fontSize:11, marginTop:8 }}>Formula: positive net + savings + ITSINDA + career tools</div>
-        </div>
+        <Btn small orange onClick={() => setShowMoreMoney(v => !v)}>{showMoreMoney ? "Collapse Money" : "Open Money Tools"}</Btn>
       </div>
 
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(145px, 1fr))", gap:10, marginBottom:14 }}>
-        <MoneyCard label="Today Net" value={rwf(moneyStats.todayNet)} color={moneyStats.todayNet >= 0 ? C.green : C.red} sub={`Income ${rwf(moneyStats.todayIncome)}`} />
-        <MoneyCard label="Today Expense" value={rwf(moneyStats.todayExpense)} color={C.red} sub={`Safe spend ${rwf(moneyStats.dailySafeSpend)}`} />
-        <MoneyCard label="Savings Month" value={rwf(moneyStats.monthlySavings)} color={C.gold} sub="protect before spending" />
-        <MoneyCard label="ITSINDA" value={moneyStats.itsindaPaid ? "Paid" : "Pending"} color={moneyStats.itsindaPaid ? C.green : C.orange} sub={`${rwf(moneyStats.itsindaThisWeek)} this week`} />
-        <MoneyCard label="Purchases" value={`${moneyStats.purchaseProgress}%`} color={C.gold} sub={`${rwf(moneyStats.totalPurchaseSaved)} saved`} />
-        <MoneyCard label="Future Goals" value={`${moneyStats.futureProgress}%`} color={C.blue} sub={`${rwf(moneyStats.totalFutureSaved)} saved`} />
-      </div>
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(210px, 1fr))", gap:10, marginBottom:14 }}>
-        {splitTargets.map(item => <div key={item.label} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}><div style={{ display:"flex", justifyContent:"space-between", gap:8 }}><b style={{ color:item.color }}>{item.label}</b><span style={{ color:C.creamSoft, fontSize:12 }}>{rwf(item.used)} / {rwf(item.value)}</span></div><div style={{ marginTop:8 }}><MiniProgressBar value={moneyProgress(item.used, item.value)} color={item.color} /></div></div>)}
-      </div>
-
-      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
-        <Btn small orange onClick={() => openMoneyEntry("income", "Client payment")}>+ Income</Btn>
-        <Btn small ghost onClick={() => openMoneyEntry("expense", "Daily expense")}>+ Expense</Btn>
-        <Btn small ghost onClick={() => openMoneyEntry("savings", "Savings")}>+ Saving</Btn>
-        <Btn small ghost onClick={markItsindaPaid}>Protect ITSINDA 20K</Btn>
-        <Btn small ghost onClick={() => setShowMoreMoney(v => !v)}>{showMoreMoney ? "Collapse Money Tools" : "Open Money Tools"}</Btn>
-      </div>
-
-      {showMoreMoney && <>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>{[["overview", "Overview"], ["ledger", "Daily Ledger"], ["purchases", "Planned Purchases"], ["future", "Future Goals"], ["itsinda", "ITSINDA"]].map(([key, label]) => <Btn key={key} small orange={moneyMode === key} ghost={moneyMode !== key} onClick={() => setMoneyMode(key)}>{label}</Btn>)}</div>
-        {(moneyMode === "overview" || moneyMode === "ledger") && <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:12, alignItems:"start", marginBottom:12 }}>
-          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12 }}>
-            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>{moneyForm.id ? "EDIT MONEY ENTRY" : "MONEY ENTRY"}</div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}><Input label="DATE" type="date" value={moneyForm.date} onChange={e => setMoneyForm(f => ({ ...f, date:e.target.value }))} /><Select label="TYPE" options={["income", "expense", "savings"]} value={moneyForm.type} onChange={e => setMoneyForm(f => ({ ...f, type:e.target.value, linkType:e.target.value === "savings" ? f.linkType : "none", linkedId:e.target.value === "savings" ? f.linkedId : "" }))} /></div>
-            <Input label="AMOUNT" type="number" value={moneyForm.amount} onChange={e => setMoneyForm(f => ({ ...f, amount:e.target.value }))} placeholder="Example: 20000" />
-            <Input label="CATEGORY" value={moneyForm.category} onChange={e => setMoneyForm(f => ({ ...f, category:e.target.value }))} placeholder="Transport, client payment, food, ITSINDA..." />
-            {moneyForm.type === "savings" && <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}><Select label="RELATIONSHIP" options={["none", "itsinda", "purchase", "future"]} value={moneyForm.linkType} onChange={e => setMoneyForm(f => ({ ...f, linkType:e.target.value, linkedId:"", category:e.target.value === "itsinda" ? "ITSINDA" : f.category }))} /><div style={{ marginBottom:12 }}><label style={{ display:"block", fontSize:11, color:C.creamSoft, marginBottom:4, letterSpacing:1 }}>LINKED GOAL</label><select disabled={moneyForm.linkType !== "purchase" && moneyForm.linkType !== "future"} value={moneyForm.linkedId} onChange={e => setMoneyForm(f => ({ ...f, linkedId:e.target.value }))} style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:13, outline:"none", boxSizing:"border-box" }}><option value="">{moneyForm.linkType === "purchase" ? "Choose purchase goal" : moneyForm.linkType === "future" ? "Choose future goal" : "No goal needed"}</option>{(moneyForm.linkType === "purchase" ? safePurchases : moneyForm.linkType === "future" ? safeFutureGoals : []).map(goal => <option key={goal.id} value={goal.id}>{goal.title}</option>)}</select></div></div>}
-            <Textarea label="NOTE / DECISION" value={moneyForm.note} onChange={e => setMoneyForm(f => ({ ...f, note:e.target.value }))} placeholder="What happened and what decision should it create?" rows={2} />
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn orange onClick={saveMoneyEntry}>{moneyForm.id ? "Save Changes" : "Add Entry"}</Btn>{moneyForm.id && <Btn ghost onClick={resetMoneyForm}>Cancel Edit</Btn>}</div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:10, marginBottom:14 }}>
+        {moneyCards.map(x => (
+          <div key={x.l} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:10 }}>
+            <div style={{ color:x.c, fontWeight:900, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{x.v}</div>
+            <div style={{ color:C.creamSoft, fontSize:11, marginTop:4 }}>{x.l}</div>
           </div>
-          <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12, minWidth:0 }}><div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", marginBottom:8 }}><div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>RECENT LEDGER</div><Badge color={C.creamSoft}>{safeEntries.length}</Badge></div>{!recentEntries.length ? <div style={{ color:C.muted, textAlign:"center", padding:18 }}>No money entry yet.</div> : recentEntries.map(entry => <div key={entry.id} style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center", padding:"10px", borderRadius:12, border:"1px solid "+C.border, background:C.surface, marginBottom:7 }}><div style={{ minWidth:0 }}><div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}><Badge color={entry.type === "income" ? C.green : entry.type === "expense" ? C.red : C.gold}>{entry.type}</Badge><b style={{ color:entry.type === "expense" ? C.red : entry.type === "income" ? C.green : C.gold }}>{rwf(entry.amount)}</b><span style={{ color:C.muted, fontSize:11 }}>{entry.date}</span></div><div style={{ color:C.creamSoft, fontSize:12, marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{entry.category || "No category"} · {goalLabel(entry)}</div>{entry.note && <div style={{ color:C.muted, fontSize:11, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{entry.note}</div>}</div><div style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"flex-end" }}><Btn small ghost onClick={() => editMoneyEntry(entry)}>Edit</Btn><Btn small ghost style={{ color:C.red, borderColor:C.red }} onClick={() => deleteMoneyEntry(entry)}>Delete</Btn></div></div>)}</div>
-        </div>}
-        {(moneyMode === "overview" || moneyMode === "purchases") && <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12, marginBottom:12 }}><div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>PLANNED PURCHASES / CAREER TOOLS</div><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:10, marginBottom:12 }}>{safePurchases.map(goal => <GoalRow key={goal.id} goal={goal} type="purchase" />)}</div><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:8, alignItems:"end" }}><Input label={purchaseForm.id ? "EDIT PURCHASE" : "NEW PURCHASE"} value={purchaseForm.title} onChange={e => setPurchaseForm(f => ({ ...f, title:e.target.value }))} placeholder="Laptop, camera, tablet..." /><Input label="TARGET" type="number" value={purchaseForm.targetAmount} onChange={e => setPurchaseForm(f => ({ ...f, targetAmount:e.target.value }))} /><Input label="SAVED" type="number" value={purchaseForm.savedAmount} onChange={e => setPurchaseForm(f => ({ ...f, savedAmount:e.target.value }))} /><Select label="PRIORITY" options={["High", "Normal", "Low"]} value={purchaseForm.priority} onChange={e => setPurchaseForm(f => ({ ...f, priority:e.target.value }))} /><Input label="DEADLINE" type="date" value={purchaseForm.deadline} onChange={e => setPurchaseForm(f => ({ ...f, deadline:e.target.value }))} /></div><Textarea label="NOTE" value={purchaseForm.note} onChange={e => setPurchaseForm(f => ({ ...f, note:e.target.value }))} rows={2} /><div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn small orange onClick={savePurchaseGoal}>{purchaseForm.id ? "Save Purchase" : "Add Purchase"}</Btn>{purchaseForm.id && <Btn small ghost onClick={resetPurchaseForm}>Cancel Edit</Btn>}</div></div>}
-        {(moneyMode === "overview" || moneyMode === "future") && <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12, marginBottom:12 }}><div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>FUTURE GOALS / LIFE CAPITAL</div><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:10, marginBottom:12 }}>{safeFutureGoals.map(goal => <GoalRow key={goal.id} goal={goal} type="future" />)}</div><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:8, alignItems:"end" }}><Input label={futureForm.id ? "EDIT FUTURE GOAL" : "NEW FUTURE GOAL"} value={futureForm.title} onChange={e => setFutureForm(f => ({ ...f, title:e.target.value }))} placeholder="Buy land, studio, car..." /><Input label="TARGET" type="number" value={futureForm.targetAmount} onChange={e => setFutureForm(f => ({ ...f, targetAmount:e.target.value }))} /><Input label="SAVED" type="number" value={futureForm.savedAmount} onChange={e => setFutureForm(f => ({ ...f, savedAmount:e.target.value }))} /><Input label="CATEGORY" value={futureForm.category} onChange={e => setFutureForm(f => ({ ...f, category:e.target.value }))} placeholder="Life Goal / Business Goal" /><Input label="DEADLINE" type="date" value={futureForm.deadline} onChange={e => setFutureForm(f => ({ ...f, deadline:e.target.value }))} /></div><Textarea label="NOTE" value={futureForm.note} onChange={e => setFutureForm(f => ({ ...f, note:e.target.value }))} rows={2} /><div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn small orange onClick={saveFutureGoal}>{futureForm.id ? "Save Future Goal" : "Add Future Goal"}</Btn>{futureForm.id && <Btn small ghost onClick={resetFutureForm}>Cancel Edit</Btn>}</div></div>}
-        {moneyMode === "itsinda" && <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:14, marginBottom:12 }}><div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>ITSINDA WEEKLY SAVINGS CONTROL</div><div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:10, marginBottom:12 }}><MoneyCard label="Weekly Target" value={rwf(ITSINDA_WEEKLY_AMOUNT)} color={C.gold} sub="Every Friday" /><MoneyCard label="This Week Paid" value={rwf(moneyStats.itsindaThisWeek)} color={moneyStats.itsindaPaid ? C.green : C.orange} sub={moneyStats.itsindaPaid ? "Complete" : "Pending"} /><MoneyCard label="Week Range" value={week.start} color={C.blue} sub={week.end} /></div><Btn orange onClick={markItsindaPaid}>Mark This Week ITSINDA Paid</Btn></div>}
-      </>}
+        ))}
+      </div>
+
+      {showMoreMoney && (
+        <>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+            {[
+              ["overview", "Overview"], ["ledger", "Daily Ledger"], ["purchases", "Planned Purchases"], ["future", "Future Goals"], ["itsinda", "ITSINDA"]
+            ].map(([key, label]) => <Btn key={key} small orange={moneyMode === key} ghost={moneyMode !== key} onClick={() => setMoneyMode(key)}>{label}</Btn>)}
+          </div>
+
+          {(moneyMode === "overview" || moneyMode === "ledger") && (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:12, alignItems:"start", marginBottom:12 }}>
+              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12 }}>
+                <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>{moneyForm.id ? "EDIT MONEY ENTRY" : "ADD MONEY ENTRY"}</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  <Input label="DATE" type="date" value={moneyForm.date} onChange={e => setMoneyForm(f => ({ ...f, date:e.target.value }))} />
+                  <Select label="TYPE" options={["income", "expense", "savings"]} value={moneyForm.type} onChange={e => setMoneyForm(f => ({ ...f, type:e.target.value, linkType:e.target.value === "savings" ? f.linkType : "none", linkedId:e.target.value === "savings" ? f.linkedId : "" }))} />
+                </div>
+                <Input label="AMOUNT" type="number" value={moneyForm.amount} onChange={e => setMoneyForm(f => ({ ...f, amount:e.target.value }))} placeholder="Example: 20000" />
+                <Input label="CATEGORY" value={moneyForm.category} onChange={e => setMoneyForm(f => ({ ...f, category:e.target.value }))} placeholder="Transport, client payment, food, ITSINDA..." />
+                {moneyForm.type === "savings" && (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                    <Select label="RELATIONSHIP" options={["none", "itsinda", "purchase", "future"]} value={moneyForm.linkType} onChange={e => setMoneyForm(f => ({ ...f, linkType:e.target.value, linkedId:"", category:e.target.value === "itsinda" ? "ITSINDA" : f.category }))} />
+                    <div style={{ marginBottom:12 }}>
+                      <label style={{ display:"block", fontSize:11, color:C.creamSoft, marginBottom:4, letterSpacing:1 }}>LINKED GOAL</label>
+                      <select disabled={moneyForm.linkType !== "purchase" && moneyForm.linkType !== "future"} value={moneyForm.linkedId} onChange={e => setMoneyForm(f => ({ ...f, linkedId:e.target.value }))} style={{ width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:13, outline:"none", boxSizing:"border-box" }}>
+                        <option value="">{moneyForm.linkType === "purchase" ? "Choose purchase goal" : moneyForm.linkType === "future" ? "Choose future goal" : "No goal needed"}</option>
+                        {(moneyForm.linkType === "purchase" ? safePurchases : moneyForm.linkType === "future" ? safeFutureGoals : []).map(goal => <option key={goal.id} value={goal.id}>{goal.title}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
+                <Textarea label="NOTE" value={moneyForm.note} onChange={e => setMoneyForm(f => ({ ...f, note:e.target.value }))} placeholder="What happened?" rows={2} />
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                  <Btn orange onClick={saveMoneyEntry}>{moneyForm.id ? "Save Changes" : "Add Entry"}</Btn>
+                  <Btn ghost onClick={markItsindaPaid}>Mark ITSINDA Paid</Btn>
+                  {moneyForm.id && <Btn ghost onClick={resetMoneyForm}>Cancel Edit</Btn>}
+                </div>
+              </div>
+
+              <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12, minWidth:0 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", marginBottom:8 }}>
+                  <div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>RECENT MONEY ENTRIES</div>
+                  <Badge color={C.creamSoft}>{safeEntries.length}</Badge>
+                </div>
+                {!recentEntries.length ? <div style={{ color:C.muted, textAlign:"center", padding:18 }}>No money entry yet.</div> : recentEntries.map(entry => (
+                  <div key={entry.id} style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center", padding:"9px 10px", borderRadius:10, border:"1px solid "+C.border, background:C.surface, marginBottom:7 }}>
+                    <div style={{ minWidth:0 }}>
+                      <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+                        <Badge color={entry.type === "income" ? C.green : entry.type === "expense" ? C.red : C.gold}>{entry.type}</Badge>
+                        <b style={{ color:entry.type === "expense" ? C.red : entry.type === "income" ? C.green : C.gold }}>{rwf(entry.amount)}</b>
+                        <span style={{ color:C.muted, fontSize:11 }}>{entry.date}</span>
+                      </div>
+                      <div style={{ color:C.creamSoft, fontSize:12, marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{entry.category || "No category"} · {goalLabel(entry)}</div>
+                      {entry.note && <div style={{ color:C.muted, fontSize:11, marginTop:2, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{entry.note}</div>}
+                    </div>
+                    <div style={{ display:"flex", gap:5, flexWrap:"wrap", justifyContent:"flex-end" }}>
+                      <Btn small ghost onClick={() => editMoneyEntry(entry)}>Edit</Btn>
+                      <Btn small ghost style={{ color:C.red, borderColor:C.red }} onClick={() => deleteMoneyEntry(entry)}>Delete</Btn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(moneyMode === "overview" || moneyMode === "purchases") && (
+            <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12, marginBottom:12 }}>
+              <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>PLANNED PURCHASES</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:10, marginBottom:12 }}>
+                {safePurchases.map(goal => <GoalRow key={goal.id} goal={goal} type="purchase" />)}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:8, alignItems:"end" }}>
+                <Input label={purchaseForm.id ? "EDIT PURCHASE" : "NEW PURCHASE"} value={purchaseForm.title} onChange={e => setPurchaseForm(f => ({ ...f, title:e.target.value }))} placeholder="Laptop, camera, tablet..." />
+                <Input label="TARGET" type="number" value={purchaseForm.targetAmount} onChange={e => setPurchaseForm(f => ({ ...f, targetAmount:e.target.value }))} />
+                <Input label="SAVED" type="number" value={purchaseForm.savedAmount} onChange={e => setPurchaseForm(f => ({ ...f, savedAmount:e.target.value }))} />
+                <Select label="PRIORITY" options={["High", "Normal", "Low"]} value={purchaseForm.priority} onChange={e => setPurchaseForm(f => ({ ...f, priority:e.target.value }))} />
+                <Input label="DEADLINE" type="date" value={purchaseForm.deadline} onChange={e => setPurchaseForm(f => ({ ...f, deadline:e.target.value }))} />
+              </div>
+              <Textarea label="NOTE" value={purchaseForm.note} onChange={e => setPurchaseForm(f => ({ ...f, note:e.target.value }))} rows={2} />
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn small orange onClick={savePurchaseGoal}>{purchaseForm.id ? "Save Purchase" : "Add Purchase"}</Btn>{purchaseForm.id && <Btn small ghost onClick={resetPurchaseForm}>Cancel Edit</Btn>}</div>
+            </div>
+          )}
+
+          {(moneyMode === "overview" || moneyMode === "future") && (
+            <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12, marginBottom:12 }}>
+              <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>FUTURE GOALS</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(230px, 1fr))", gap:10, marginBottom:12 }}>
+                {safeFutureGoals.map(goal => <GoalRow key={goal.id} goal={goal} type="future" />)}
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:8, alignItems:"end" }}>
+                <Input label={futureForm.id ? "EDIT FUTURE GOAL" : "NEW FUTURE GOAL"} value={futureForm.title} onChange={e => setFutureForm(f => ({ ...f, title:e.target.value }))} placeholder="Buy land, studio, car..." />
+                <Input label="TARGET" type="number" value={futureForm.targetAmount} onChange={e => setFutureForm(f => ({ ...f, targetAmount:e.target.value }))} />
+                <Input label="SAVED" type="number" value={futureForm.savedAmount} onChange={e => setFutureForm(f => ({ ...f, savedAmount:e.target.value }))} />
+                <Input label="CATEGORY" value={futureForm.category} onChange={e => setFutureForm(f => ({ ...f, category:e.target.value }))} placeholder="Life Goal / Business Goal" />
+                <Input label="DEADLINE" type="date" value={futureForm.deadline} onChange={e => setFutureForm(f => ({ ...f, deadline:e.target.value }))} />
+              </div>
+              <Textarea label="NOTE" value={futureForm.note} onChange={e => setFutureForm(f => ({ ...f, note:e.target.value }))} rows={2} />
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Btn small orange onClick={saveFutureGoal}>{futureForm.id ? "Save Future Goal" : "Add Future Goal"}</Btn>{futureForm.id && <Btn small ghost onClick={resetFutureForm}>Cancel Edit</Btn>}</div>
+            </div>
+          )}
+
+          {moneyMode === "itsinda" && (
+            <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:14, marginBottom:12 }}>
+              <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:8 }}>ITSINDA WEEKLY SAVINGS</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:10, marginBottom:12 }}>
+                <MoneyMiniCard label="Weekly Target" value={rwf(ITSINDA_WEEKLY_AMOUNT)} color={C.gold} sub="Every Friday" />
+                <MoneyMiniCard label="This Week Paid" value={rwf(moneyStats.itsindaThisWeek)} color={moneyStats.itsindaPaid ? C.green : C.orange} sub={moneyStats.itsindaPaid ? "Complete" : "Pending"} />
+                <MoneyMiniCard label="Week Range" value={week.start} color={C.blue} sub={week.end} />
+              </div>
+              <Btn orange onClick={markItsindaPaid}>Mark This Week ITSINDA Paid</Btn>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
 function ListView({ tasks, activeSpace, selected, setSelected, onUpdate, settings }) {
-  const [mode, setMode] = useState("command");
+  const ordered = useMemo(() => sortTasksSmart(tasks), [tasks]);
+  const doneCount = useMemo(() => tasks.filter(t => t.status === "Done").length, [tasks]);
+  const lateCount = useMemo(() => tasks.filter(isLateTask).length, [tasks]);
   const [collapsedSections, setCollapsedSections] = useState(() => readStore(TASK_CATEGORY_COLLAPSE_KEY, {}));
+
   useEffect(() => { writeStore(TASK_CATEGORY_COLLAPSE_KEY, collapsedSections); }, [collapsedSections]);
-  const ordered = useMemo(() => sortTasksSmart(Array.isArray(tasks) ? tasks : []), [tasks]);
-  const todayKey = localTodayISO();
-  const enriched = useMemo(() => ordered.map(t => ({ ...normalizeTask(t), smartScore:taskScoreFormula(t), formulaReason:taskFormulaReason(t) })), [ordered]);
-  const stats = useMemo(() => {
-    const open = enriched.filter(t => t.status !== "Done");
-    return { total:enriched.length, open:open.length, done:enriched.filter(t => t.status === "Done").length, today:open.filter(t => t.due === todayKey || (t.isRoutine && t.routineDate === todayKey)).length, late:open.filter(isLateTask).length, routine:open.filter(t => t.isRoutine).length };
-  }, [enriched, todayKey]);
-  const sections = useMemo(() => {
-    const open = enriched.filter(t => t.status !== "Done");
-    const sortByScore = (items) => [...items].sort((a, b) => (b.smartScore || 0) - (a.smartScore || 0) || compareTaskSmart(a, b));
+
+  const taskSections = useMemo(() => {
+    const late = sortTasksSmart(ordered.filter(t => t.status !== "Done" && isLateTask(t)));
+    const inProgress = sortTasksSmart(ordered.filter(t => t.status === "In Progress" && !isLateTask(t)));
+    const active = sortTasksSmart(ordered.filter(t => t.status !== "Done" && t.status !== "In Progress" && !isLateTask(t) && isDateKey(t.due)));
+    const undone = sortTasksSmart(ordered.filter(t => t.status !== "Done" && t.status !== "In Progress" && !isLateTask(t) && !isDateKey(t.due)));
+    const completed = sortTasksSmart(ordered.filter(t => t.status === "Done"));
     return [
-      { key:"mission", title:"NEXT MISSION", subtitle:"The app formula says these should move first.", items:sortByScore(open).slice(0, 6), color:C.orange, empty:"No mission waiting." },
-      { key:"routine", title:"ROUTINE ENGINE TASKS", subtitle:"Daily discipline tasks for today and routine recovery.", items:sortByScore(open.filter(t => t.isRoutine)), color:C.gold, empty:"No routine task in this filter." },
-      { key:"progress", title:"IN PROGRESS", subtitle:"Started work. Finish or update these before opening many new tasks.", items:sortByScore(open.filter(t => t.status === "In Progress")), color:C.blue, empty:"No task in progress." },
-      { key:"late", title:"RECOVERY QUEUE", subtitle:"Late tasks are separated. Recover one at a time.", items:sortByScore(open.filter(isLateTask)), color:C.red, empty:"No late task. Good." },
-      { key:"today", title:"TODAY / THIS WEEK", subtitle:"Tasks due today or inside the current week.", items:sortByScore(open.filter(t => { const d = isDateKey(t.due) ? daysBetweenLocal(todayKey, t.due) : null; return d !== null && d >= 0 && d <= 7 && !isLateTask(t); })), color:C.green, empty:"No deadline task this week." },
-      { key:"backlog", title:"BACKLOG / NO DEADLINE", subtitle:"Ideas and tasks without a date. Give them a deadline when they become real.", items:sortByScore(open.filter(t => !isDateKey(t.due) && !t.isRoutine)), color:C.purple, empty:"No backlog task." },
-      { key:"done", title:"DONE / PROOF", subtitle:"Completed tasks remain visible as proof of work.", items:sortTasksSmart(enriched.filter(t => t.status === "Done")), color:C.green, empty:"No completed task yet." },
+      { key:"active", title:"ACTIVE TASKS", subtitle:"Open tasks with a deadline today or in the future.", items:active, color:C.blue, empty:"No active deadline task." },
+      { key:"progress", title:"IN PROGRESS", subtitle:"Started tasks that are not late yet.", items:inProgress, color:C.orange, empty:"No task in progress." },
+      { key:"late", title:"LATE TASKS", subtitle:"Deadline passed and the task is not done.", items:late, color:C.red, empty:"No late task." },
+      { key:"undone", title:"UNDONE TASKS", subtitle:"Open tasks without a deadline.", items:undone, color:C.gold, empty:"No undone task without deadline." },
+      { key:"done", title:"DONE TASKS", subtitle:"Completed tasks are always visible, locked, and at the bottom.", items:completed, color:C.green, empty:"No completed task yet." },
     ];
-  }, [enriched, todayKey]);
-  const visibleSections = mode === "routine" ? sections.filter(s => ["routine", "done"].includes(s.key)) : mode === "recovery" ? sections.filter(s => ["late", "mission", "done"].includes(s.key)) : mode === "matrix" ? sections.filter(s => ["mission", "progress", "today", "backlog", "done"].includes(s.key)) : sections;
-  const dueLabel = (t) => { if (!isDateKey(t.due)) return { label:"No deadline", color:C.muted }; const late = taskLateInfo(t); if (late.isLate) return { label:late.label, color:C.red }; const diff = daysBetweenLocal(todayKey, t.due); if (diff === 0) return { label:"Today", color:C.orange }; if (diff === 1) return { label:"Tomorrow", color:C.blue }; if (diff !== null && diff <= 7) return { label:`${diff} days`, color:C.green }; return { label:t.due, color:C.creamSoft }; };
-  const updateStatus = (task, status) => { if (typeof onUpdate !== "function") return; onUpdate({ ...task, status, completedAt:status === "Done" ? new Date().toISOString() : "", locked:status === "Done" }); };
-  const moveTomorrow = (task) => { if (typeof onUpdate !== "function") return; onUpdate({ ...task, due:addDaysISO(todayKey, 1), status:task.status === "Done" ? "To Do" : task.status }); };
-  const toggleSection = (key) => setCollapsedSections(prev => ({ ...(prev || {}), [key]:!prev?.[key] }));
-  const collapseAll = () => setCollapsedSections(visibleSections.reduce((acc, section) => ({ ...acc, [section.key]:true }), {}));
-  const expandAll = () => setCollapsedSections({});
-  const TaskCommandCard = ({ t }) => {
-    const due = dueLabel(t); const done = t.status === "Done"; const late = taskLateInfo(t); const spaceColor = SPACES.find(s => s.id === t.space)?.color || C.orange;
-    return <div onClick={() => setSelected(t)} style={{ display:"grid", gridTemplateColumns:"auto minmax(0,1fr) auto", gap:12, alignItems:"start", padding:"12px", borderRadius:14, marginBottom:8, cursor:"pointer", background:selected && selected.id === t.id ? C.elevated : late.isLate ? C.red+"12" : C.surface, border:"1px solid "+(selected && selected.id === t.id ? C.orange : done ? C.green : late.isLate ? C.red : C.border), borderLeft:"5px solid "+(done ? C.green : late.isLate ? C.red : spaceColor), opacity:done ? .62 : 1 }}>
-      <div style={{ width:42, height:42, borderRadius:14, background:(done ? C.green : late.isLate ? C.red : C.bg)+"22", border:"1px solid "+(done ? C.green : late.isLate ? C.red : C.border), display:"grid", placeItems:"center" }}><div style={{ color:done ? C.green : late.isLate ? C.red : C.gold, fontWeight:950 }}>{done ? "✓" : t.smartScore}</div></div>
-      <div style={{ minWidth:0 }}><div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center", marginBottom:5 }}><Badge color={spaceColor}>{SPACES.find(s => s.id === t.space)?.name || t.space}</Badge><Badge color={statusColor(t.status)}>{done ? "Done" : t.status}</Badge><Badge color={priorityColor(t.priority)}>{t.priority}</Badge><Badge color={due.color}>{due.label}</Badge>{t.isRoutine && <Badge color={C.gold}>Routine</Badge>}{isMopasTenderWork(t) && <Badge color={C.blue}>Tender</Badge>}</div><div style={{ color:done ? C.muted : C.cream, fontWeight:900, fontSize:15, lineHeight:1.35, textDecoration:done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis" }}>{t.title}</div><div style={{ color:C.creamSoft, fontSize:12, marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{(t.folder || "General") + " / " + (t.list || "Tasks")}{t.time ? " · " + t.time : ""}</div><div style={{ color:C.muted, fontSize:11, marginTop:5 }}>Formula: {t.formulaReason}</div>{Array.isArray(t.checklist) && t.checklist.length > 0 && <div style={{ marginTop:8 }}><MiniProgressBar value={(t.checklist.filter(x => x && x.done).length / Math.max(1, t.checklist.length)) * 100} color={C.orange} height={5} /></div>}</div>
-      <div style={{ display:"grid", gap:6, minWidth:90 }}>{done ? <Btn small orange onClick={(e) => { e.stopPropagation(); updateStatus(t, "To Do"); }}>Reopen</Btn> : <><Btn small ghost onClick={(e) => { e.stopPropagation(); updateStatus(t, t.status === "In Progress" ? "To Do" : "In Progress"); }}>{t.status === "In Progress" ? "Pause" : "Start"}</Btn><Btn small orange onClick={(e) => { e.stopPropagation(); updateStatus(t, "Done"); }}>Done</Btn><Btn small ghost onClick={(e) => { e.stopPropagation(); moveTomorrow(t); }}>Tomorrow</Btn></>}</div>
-    </div>;
+  }, [ordered]);
+
+  const dueLabel = (t) => {
+    if (!isDateKey(t.due)) return { label:"No deadline", color:C.muted };
+    const late = taskLateInfo(t);
+    if (late.isLate) return { label:late.label, color:C.red };
+    const diff = daysBetweenLocal(localTodayISO(), t.due);
+    if (diff === 0) return { label:"Today", color:C.orange };
+    if (diff === 1) return { label:"Tomorrow", color:C.blue };
+    return { label:t.due, color:C.creamSoft };
   };
-  const renderSection = (section) => { const isCollapsed = !!collapsedSections?.[section.key]; return <div key={section.key} style={{ marginTop:0 }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:isCollapsed ? 0 : 8, padding:"11px 12px", background:C.bg, border:"1px solid "+C.border, borderLeft:"5px solid "+section.color, borderRadius:14 }}><div style={{ minWidth:0 }}><div style={{ color:section.color, fontSize:12, letterSpacing:2, fontWeight:950 }}>{section.title}</div><div style={{ color:C.creamSoft, fontSize:12, marginTop:2 }}>{section.subtitle}</div></div><div style={{ display:"flex", gap:7, alignItems:"center", flexWrap:"wrap" }}><Badge color={section.color}>{section.items.length}</Badge><Btn small ghost onClick={() => toggleSection(section.key)}>{isCollapsed ? "Expand" : "Collapse"}</Btn></div></div>{!isCollapsed && (!section.items.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:18, background:C.bg, border:"1px dashed "+C.border, borderRadius:10, marginBottom:10 }}>{section.empty}</div> : section.items.map(t => <TaskCommandCard key={t.id} t={t} />))}</div>; };
-  return <div>
-    <SpaceOperatingSystemPanel activeSpace={activeSpace} tasks={tasks} />
-    {(activeSpace === "wakeup" || activeSpace === "health" || activeSpace === "drawing" || activeSpace === "afterglow" || activeSpace === "money") && <DailyRoutineEnginePanel tasks={tasks} onUpdate={onUpdate} activeSpace={activeSpace} />}
+
+  const toggleSection = (key) => setCollapsedSections(prev => ({ ...(prev || {}), [key]:!prev?.[key] }));
+  const collapseAll = () => setCollapsedSections(taskSections.reduce((acc, section) => ({ ...acc, [section.key]:true }), {}));
+  const expandAll = () => setCollapsedSections({});
+
+  const renderTaskRow = (t) => {
+    const due = dueLabel(t);
+    const done = t.status === "Done";
+    const late = taskLateInfo(t);
+    const mopasType = t.space === "mopas" ? getMopasTaskType(t) : "";
+    return (
+      <div key={t.id} onClick={() => setSelected(t)} style={{ display:"grid", gridTemplateColumns:"auto minmax(0,1fr) auto", alignItems:"center", gap:12, padding:"10px 12px", borderRadius:8, marginBottom:6, cursor:"pointer", background: selected && selected.id === t.id ? C.elevated : late.isLate ? C.red+"10" : C.bg, border:"1px solid "+(selected && selected.id === t.id ? C.orange : done ? C.green : late.isLate ? C.red : C.border), borderLeft:"4px solid "+(done ? C.green : late.isLate ? C.red : mopasType === "Tender Working On" ? C.gold : due.color), opacity:done ? .58 : 1 }}>
+        <span style={{ fontSize:14, width:24 }}>{done ? "✓" : late.isLate ? "◬" : t.status === "In Progress" ? "↻" : t.status === "Blocked" ? "Blocked" : "⫸"}</span>
+        <div style={{ minWidth:0 }}>
+          <div style={{ fontWeight:700, color:done ? C.muted : late.isLate ? C.red : C.cream, fontSize:14, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", textDecoration:done ? "line-through" : "none" }}>{t.title}</div>
+          <div style={{ fontSize:11, color:C.muted, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{(t.folder || "General")+" / "+(t.list || "Tasks")}{t.time ? " · " + t.time : ""}</div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:5 }}>
+            {mopasType && <Badge color={mopasType === "Tender Working On" ? C.gold : C.blue}>{mopasType}</Badge>}
+            <Badge color={statusColor(t.status)}>{done ? "Completed" : t.status}</Badge>
+            <Badge color={priorityColor(t.priority)}>{t.priority}</Badge>
+            <Badge color={due.color}>{due.label}</Badge>
+            {late.isLate && <Badge color={C.red}>Late · separated</Badge>}
+            {done && <Badge color={C.green}>Locked</Badge>}
+            {mopasType === "Tender Working On" && t.tenderStage && <Badge color={C.blue}>{t.tenderStage}</Badge>}
+          </div>
+        </div>
+        <div style={{ display:"grid", gap:5 }}>
+          {done ? (
+            <Btn small orange onClick={(e) => { e.stopPropagation(); onUpdate({ ...t, status:"To Do", locked:false, completedAt:"" }); }}>Reopen</Btn>
+          ) : STATUSES.filter(st => st !== t.status).slice(0,2).map(st => (
+            <Btn key={st} small ghost onClick={(e) => { e.stopPropagation(); onUpdate({ ...t, status:st }); }}>{st}</Btn>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderSection = (section) => {
+    const isCollapsed = !!collapsedSections?.[section.key];
+    return (
+      <div style={{ marginTop:0 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:isCollapsed ? 0 : 8, padding:"10px 12px", background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+section.color, borderRadius:10 }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ color:section.color, fontSize:12, letterSpacing:2, fontWeight:900 }}>{section.title}</div>
+            <div style={{ color:C.creamSoft, fontSize:12, marginTop:2 }}>{section.subtitle}</div>
+          </div>
+          <div style={{ display:"flex", gap:7, alignItems:"center", flexWrap:"wrap" }}>
+            <Badge color={section.color}>{section.items.length}</Badge>
+            <Btn small ghost onClick={() => toggleSection(section.key)}>{isCollapsed ? "Expand" : "Collapse"}</Btn>
+          </div>
+        </div>
+        {!isCollapsed && (!section.items.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:18, background:C.bg, border:"1px dashed "+C.border, borderRadius:10, marginBottom:10 }}>{section.empty}</div> : section.items.map(renderTaskRow))}
+      </div>
+    );
+  };
+
+  return (
     <div style={PNL}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:12 }}><div><div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>SMART TASK COMMAND QUEUE</div><div style={{ color:C.creamSoft, fontSize:12 }}>Tasks are ranked by formula: urgency + date + status + routine + MOPAS/tender weight.</div></div><div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}><Badge color={C.orange}>{stats.open} open</Badge><Badge color={stats.late ? C.red : C.green}>{stats.late} late</Badge><Badge color={C.green}>{stats.done} done</Badge><Btn small ghost onClick={collapseAll}>Collapse All</Btn><Btn small ghost onClick={expandAll}>Expand All</Btn></div></div>
-      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>{[["command", "Command"], ["matrix", "Matrix"], ["routine", "Routine"], ["recovery", "Recovery"]].map(([key, label]) => <Btn key={key} small orange={mode === key} ghost={mode !== key} onClick={() => setMode(key)}>{label}</Btn>)}</div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(145px, 1fr))", gap:10, marginBottom:14 }}><KPIBox label="Today" value={stats.today} sub="needs action" color={stats.today ? C.orange : C.green} /><KPIBox label="Routine" value={stats.routine} sub="discipline tasks" color={C.gold} /><KPIBox label="Recovery" value={stats.late} sub="late tasks" color={stats.late ? C.red : C.green} /><KPIBox label="Proof" value={stats.done} sub="done tasks" color={C.green} /></div>
-      {!enriched.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:24, background:C.bg, border:"1px dashed "+C.border, borderRadius:10 }}>No task found with the current filters.</div> : <div style={{ display:"grid", gap:12 }}>{visibleSections.map(renderSection)}</div>}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:12 }}>
+        <div>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>TASK CATEGORIES</div>
+          <div style={{ color:C.creamSoft, fontSize:12 }}>{lateCount ? `${lateCount} late task${lateCount === 1 ? "" : "s"} marked red and separated` : "Done tasks are always visible at the bottom"}</div>
+        </div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+          <Badge color={C.green}>{doneCount} done</Badge>
+          <Btn small ghost onClick={collapseAll}>Collapse All</Btn>
+          <Btn small ghost onClick={expandAll}>Expand All</Btn>
+        </div>
+      </div>
+      {!ordered.length ? (
+        <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:24, background:C.bg, border:"1px dashed "+C.border, borderRadius:10 }}>No task found with the current filters.</div>
+      ) : (
+        <div style={{ display:"grid", gap:12 }}>
+          {taskSections.map(renderSection)}
+        </div>
+      )}
     </div>
-  </div>;
+  );
 }
 
 function BoardView({ tasks, selected, setSelected, onUpdate, settings }) {
