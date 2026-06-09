@@ -1015,6 +1015,77 @@ function NotificationCommandPanel({ settings, metrics, sendTodayDisciplineEmail,
   );
 }
 
+function DashMiniCalendar({ tasks, setSelected, setActiveSpace, setView, setShowEndDayReview, todayKey }) {
+  const [calDate, setCalDate] = useState(() => { const d = parseDateKey(todayKey) || new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [calSel, setCalSel] = useState(todayKey);
+  const y = calDate.getFullYear(), m = calDate.getMonth();
+  const first = new Date(y, m, 1).getDay();
+  const days = new Date(y, m+1, 0).getDate();
+  const cells = Array.from({ length: Math.ceil((first+days)/7)*7 }, (_,i) => {
+    const day = i - first + 1;
+    return day >= 1 && day <= days ? `${y}-${String(m+1).padStart(2,"0")}-${String(day).padStart(2,"0")}` : "";
+  });
+  const tasksByDay = useMemo(() => {
+    const map = {};
+    (Array.isArray(tasks)?tasks:[]).forEach(t => { if (isDateKey(t.due)) { if (!map[t.due]) map[t.due]=[]; map[t.due].push(t); } });
+    return map;
+  }, [tasks]);
+  const selTasks = calSel ? sortTasksSmart(tasksByDay[calSel] || []) : [];
+  const monthLabel = calDate.toLocaleDateString(undefined, { month:"long", year:"numeric" });
+  return (
+    <div style={{ background:C.surface, border:"1px solid "+C.border, borderLeft:"4px solid "+C.gold, borderRadius:14, padding:14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, marginBottom:10, flexWrap:"wrap" }}>
+        <div>
+          <div style={{ color:C.gold, fontSize:9, letterSpacing:2.5, fontWeight:900 }}>CALENDAR</div>
+          <div style={{ color:C.cream, fontSize:13, fontWeight:800, marginTop:1 }}>{monthLabel}</div>
+        </div>
+        <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+          <button onClick={() => setCalDate(new Date(y,m-1,1))} style={{ width:28, height:28, borderRadius:7, border:"1px solid "+C.border, background:C.bg, color:C.cream, cursor:"pointer", fontSize:14 }}>‹</button>
+          <button onClick={() => { const d = parseDateKey(todayKey)||new Date(); setCalDate(new Date(d.getFullYear(),d.getMonth(),1)); setCalSel(todayKey); }} style={{ padding:"4px 10px", borderRadius:7, border:"1px solid "+C.border, background:C.bg, color:C.gold, cursor:"pointer", fontSize:11, fontWeight:800 }}>Today</button>
+          <button onClick={() => setCalDate(new Date(y,m+1,1))} style={{ width:28, height:28, borderRadius:7, border:"1px solid "+C.border, background:C.bg, color:C.cream, cursor:"pointer", fontSize:14 }}>›</button>
+          <Btn ghost onClick={() => setView("calendar")} style={{ fontSize:10 }}>Full calendar</Btn>
+        </div>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:8 }}>
+        {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => <div key={d} style={{ textAlign:"center", color:C.muted, fontSize:9, fontWeight:800, padding:"3px 0" }}>{d}</div>)}
+        {cells.map((key, i) => {
+          if (!key) return <div key={i} style={{ minHeight:32 }} />;
+          const dayTasks = tasksByDay[key] || [];
+          const isToday = key === todayKey;
+          const sel = key === calSel;
+          const hasLate = key < todayKey && dayTasks.some(t => t.status!=="Done");
+          const dotColor = hasLate ? C.red : dayTasks.some(t=>t.status==="Done"&&dayTasks.every(t=>t.status==="Done")) ? C.green : dayTasks.length ? C.orange : null;
+          return (
+            <div key={key} onClick={() => setCalSel(key)} style={{ minHeight:32, borderRadius:8, border:"1px solid "+(sel?C.orange:isToday?C.gold:C.border), background:sel?C.elevated:isToday?C.gold+"18":C.bg, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, transition:"background .15s" }}>
+              <span style={{ color:isToday?C.gold:C.cream, fontSize:11, fontWeight:isToday||sel?900:400 }}>{Number(key.slice(-2))}</span>
+              {dotColor && <div style={{ width:4, height:4, borderRadius:"50%", background:dotColor }} />}
+            </div>
+          );
+        })}
+      </div>
+      {calSel && (
+        <div>
+          <div style={{ color:C.muted, fontSize:10, marginBottom:6 }}>{calSel} · {selTasks.length} task{selTasks.length!==1?"s":""}</div>
+          <div style={{ display:"grid", gap:5, maxHeight:140, overflowY:"auto" }}>
+            {selTasks.slice(0,5).map(task => (
+              <div key={task.id} onClick={() => { setActiveSpace(task.space); setView("list"); setSelected(task); }} style={{ display:"flex", gap:8, alignItems:"center", background:C.bg, border:"1px solid "+C.border, borderLeft:"3px solid "+(isLateTask(task)?C.red:priorityColor(task.priority)), borderRadius:8, padding:"7px 9px", cursor:"pointer" }}>
+                <span style={{ fontSize:10 }}>{task.status==="Done"?"✅":"⬜"}</span>
+                <span style={{ flex:1, color:task.status==="Done"?C.muted:C.creamSoft, fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{task.title}</span>
+                <Badge color={priorityColor(task.priority)}>{task.priority}</Badge>
+              </div>
+            ))}
+            {selTasks.length === 0 && <div style={{ color:C.muted, fontSize:11, textAlign:"center", padding:"10px 0" }}>No tasks on this date.</div>}
+          </div>
+          <div style={{ display:"flex", gap:6, marginTop:8, flexWrap:"wrap" }}>
+            <Btn ghost onClick={() => setShowEndDayReview(true)} style={{ fontSize:10 }}>End Day Review</Btn>
+            <Btn ghost onClick={() => setView("calendar")} style={{ fontSize:10 }}>Open full calendar</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AFTERGLOW COMMAND CENTER  — redesigned for clarity, connection, and action
 // Inspired by: Linear (calm focus), Monday.com (status cols), Notion (hierarchy),
@@ -1305,6 +1376,11 @@ function AfterglowCommandHubV3({ tasks, settings, goSpace, setView, setActiveSpa
                 <div style={{ color:C.green, fontSize:11, fontWeight:800 }}>✓ All documents are active</div>
               </div>
             )}
+          </div>
+
+          {/* Mini calendar - full width */}
+          <div style={{ gridColumn:"1/-1" }}>
+            <DashMiniCalendar tasks={tasks} setSelected={setSelected} setActiveSpace={setActiveSpace} setView={setView} setShowEndDayReview={setShowEndDayReview} todayKey={todayKey} />
           </div>
 
         </div>
@@ -1775,19 +1851,107 @@ function AfterglowReportsV3({ tasks, settings, setView, setActiveSpace, isPhoneL
   );
 }
 
+const KNOWLEDGE_KEY = "afterglow_knowledge_notes_v1";
+const KNOWLEDGE_TEMPLATES = [
+  { id:"tender-sop", area:"MOPAS", title:"Tender Preparation SOP", icon:"📋", content:"TENDER PREPARATION CHECKLIST\n\n1. ADMIN DOCUMENTS\n• RDB certificate\n• RRA tax clearance\n• RSSB clearance\n• VAT certificate\n• Beneficial ownership declaration\n• Bid security / declaration\n\n2. TECHNICAL PROPOSAL\n• Executive summary\n• Understanding of TOR\n• Methodology\n• Work plan / schedule\n• Team composition + CVs\n• Equipment list\n• Similar contracts / experience\n\n3. FINANCIAL PROPOSAL\n• Price schedule / BOQ\n• Payment terms\n• Financial offer cover\n\n4. SUBMISSION\n• Final PDF compilation\n• Upload to Umucyo / portal\n• Proof of submission screenshot\n• File hard copy if required" },
+  { id:"client-meeting", area:"MOPAS", title:"Client Meeting Note", icon:"🤝", content:"CLIENT: \nDATE: \nMETING TYPE: \nATTENDEES: \n\nKEY DECISIONS:\n• \n• \n\nACTION ITEMS:\n• [ ] Action — Owner — Deadline\n• [ ] Action — Owner — Deadline\n\nNEXT FOLLOW-UP:\nDate: \nChannel: \nExpected response: " },
+  { id:"43-research", area:"Creative", title:"43 Project Research Note", icon:"🎬", content:"SCENE / IDEA TITLE:\nDATE:\n\nHISTORICAL REFERENCE:\n\nLOCATION:\n\nVISUAL STYLE:\n\nCHARACTER NOTE:\n\nEMOTION / TONE:\n\nSOUND REFERENCE:\n\nCONNECTION TO FELICITE'S STORY:\n\nNEXT STEP:\n" },
+  { id:"afterglow-content", area:"Brand", title:"AFTERGLOW Content Idea", icon:"✨", content:"CONTENT TITLE:\nPLATFORM:\nFORMAT: (video / image / reel / carousel)\n\nOBJECTIVE:\n\nHOOK (first line):\n\nMAIN MESSAGE:\n\nCALL TO ACTION:\n\nASSETS NEEDED:\n• \n\nPUBLISH DATE:\n" },
+  { id:"daily-review", area:"Life", title:"Personal Discipline Review", icon:"🔄", content:"DATE:\nWAKE-UP TIME:\n\nWINS TODAY:\n• \n\nMISSED:\n• \n\nMONEY NOTE:\n\nCREATIVE OUTPUT:\n\nKEY MISTAKE AND CORRECTION:\n\nTOMORROW TOP 3:\n1. \n2. \n3. \n\nENERGY LEVEL (1-10): \nDISCIPLINE SCORE (1-10): " },
+  { id:"mopas-daily", area:"MOPAS", title:"MOPAS Daily Operations Report", icon:"📊", content:"DATE:\n\nCOMPLETED TODAY:\n• \n\nPENDING / IN PROGRESS:\n• \n\nNEW TENDERS FOUND:\n• \n\nFOLLOW-UPS DONE:\n• \n\nTOMORROW PRIORITY:\n1. \n2. \n3. \n\nOPPORTUNITY NOTE:\n" },
+];
+
 function AfterglowKnowledgeV3({ setShowNewTask, isPhoneLayout }) {
-  const templates = [
-    { title:"Tender Preparation SOP", area:"MOPAS", content:"Admin documents, technical proposal, financial offer, compliance table, submission proof, follow-up." },
-    { title:"Client Meeting Note", area:"MOPAS", content:"Client, date, decision, action owner, deadline, next follow-up." },
-    { title:"43 Project Research Note", area:"Creative", content:"Historical reference, location, visual style, character, scene idea, permission needed." },
-    { title:"AFTERGLOW Content System", area:"Brand", content:"Idea, objective, hook, asset needed, platform, publish date." },
-    { title:"Personal Discipline Review", area:"Life", content:"Wake-up, reading, workout, money, creative output, mistake, tomorrow correction." },
-  ];
+  const [notes, setNotes] = useState(() => readStore(KNOWLEDGE_KEY, {}));
+  const [activeId, setActiveId] = useState(KNOWLEDGE_TEMPLATES[0].id);
+  const [filterArea, setFilterArea] = useState("All");
+  const [editMode, setEditMode] = useState(false);
+
+  const saveNote = (id, content) => {
+    const next = { ...notes, [id]: content };
+    setNotes(next);
+    writeStore(KNOWLEDGE_KEY, next);
+  };
+  const resetNote = (id) => {
+    const next = { ...notes };
+    delete next[id];
+    setNotes(next);
+    writeStore(KNOWLEDGE_KEY, next);
+  };
+  const copyNote = (content) => { try { navigator.clipboard.writeText(content); } catch {} };
+
+  const areas = ["All", ...Array.from(new Set(KNOWLEDGE_TEMPLATES.map(t => t.area)))];
+  const filtered = filterArea === "All" ? KNOWLEDGE_TEMPLATES : KNOWLEDGE_TEMPLATES.filter(t => t.area === filterArea);
+  const active = KNOWLEDGE_TEMPLATES.find(t => t.id === activeId) || KNOWLEDGE_TEMPLATES[0];
+  const activeContent = notes[active.id] !== undefined ? notes[active.id] : active.content;
+
   return (
-    <div style={{ display:"grid", gap:14, maxWidth:1480, margin:"0 auto" }}>
-      <div style={{ ...PNL }}><div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>KNOWLEDGE BASE</div><h2 style={{ margin:"5px 0" }}>Docs, SOPs, templates and learning notes</h2><div style={{ color:C.muted, fontSize:12 }}>Notion style knowledge base for tenders, company work, creative learning, and personal discipline.</div></div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(250px, 1fr))", gap:12 }}>
-        {templates.map(item => <div key={item.title} style={{ ...PNL }}><Badge color={C.gold}>{item.area}</Badge><h3 style={{ margin:"10px 0 6px" }}>{item.title}</h3><p style={{ color:C.creamSoft, fontSize:12, lineHeight:1.55 }}>{item.content}</p><Btn small ghost onClick={() => setShowNewTask(true)}>Create task from this</Btn></div>)}
+    <div style={{ display:"grid", gap:12, maxWidth:1480, margin:"0 auto" }}>
+      {/* Header */}
+      <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+        <div>
+          <div style={{ color:C.gold, fontSize:9, letterSpacing:2.5, fontWeight:900 }}>KNOWLEDGE BASE</div>
+          <div style={{ color:C.cream, fontSize:16, fontWeight:800, marginTop:2 }}>SOPs, templates, notes & ideas</div>
+        </div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+          {areas.map(a => <button key={a} onClick={() => setFilterArea(a)} style={{ padding:"6px 12px", borderRadius:8, border:"1px solid "+(filterArea===a?C.gold:C.border), background:filterArea===a?C.gold+"22":"transparent", color:filterArea===a?C.gold:C.creamSoft, fontSize:11, fontWeight:filterArea===a?800:500, cursor:"pointer" }}>{a}</button>)}
+        </div>
+      </div>
+
+      <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout?"1fr":"280px 1fr", gap:12, alignItems:"start" }}>
+        {/* Template list */}
+        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:10 }}>
+          <div style={{ color:C.muted, fontSize:9, letterSpacing:2, fontWeight:900, padding:"4px 6px 8px" }}>TEMPLATES</div>
+          {filtered.map(t => {
+            const hasNote = notes[t.id] !== undefined;
+            return (
+              <div key={t.id} onClick={() => { setActiveId(t.id); setEditMode(false); }} style={{ display:"flex", gap:9, alignItems:"center", padding:"9px 10px", borderRadius:10, cursor:"pointer", background:activeId===t.id?C.elevated:"transparent", marginBottom:2 }}>
+                <span style={{ fontSize:16, flexShrink:0 }}>{t.icon}</span>
+                <div style={{ minWidth:0, flex:1 }}>
+                  <div style={{ color:activeId===t.id?C.cream:C.creamSoft, fontSize:12, fontWeight:activeId===t.id?800:500, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.title}</div>
+                  <div style={{ color:C.muted, fontSize:9, marginTop:1 }}>{t.area}{hasNote?" · edited":""}</div>
+                </div>
+                {hasNote && <span style={{ width:6, height:6, borderRadius:"50%", background:C.orange, flexShrink:0 }} />}
+              </div>
+            );
+          })}
+          <div style={{ borderTop:"1px solid "+C.border, marginTop:8, paddingTop:8 }}>
+            <Btn ghost onClick={() => setShowNewTask(true)} style={{ width:"100%", fontSize:11 }}>+ Create task from template</Btn>
+          </div>
+        </div>
+
+        {/* Active note */}
+        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:16 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10, marginBottom:12, flexWrap:"wrap" }}>
+            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+              <span style={{ fontSize:20 }}>{active.icon}</span>
+              <div>
+                <div style={{ color:C.cream, fontSize:14, fontWeight:800 }}>{active.title}</div>
+                <div style={{ display:"flex", gap:6, marginTop:3 }}>
+                  <Badge color={C.gold}>{active.area}</Badge>
+                  {notes[active.id] !== undefined && <Badge color={C.orange}>Edited</Badge>}
+                </div>
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              <Btn ghost onClick={() => copyNote(activeContent)} style={{ fontSize:11 }}>Copy</Btn>
+              {notes[active.id] !== undefined && <Btn ghost onClick={() => resetNote(active.id)} style={{ fontSize:11, color:C.red, borderColor:C.red }}>Reset</Btn>}
+              <Btn orange onClick={() => setEditMode(e => !e)} style={{ fontSize:11 }}>{editMode ? "Preview" : "Edit"}</Btn>
+            </div>
+          </div>
+          {editMode ? (
+            <textarea
+              value={activeContent}
+              onChange={e => saveNote(active.id, e.target.value)}
+              style={{ width:"100%", minHeight:320, padding:14, borderRadius:12, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:13, lineHeight:1.65, outline:"none", resize:"vertical", fontFamily:"inherit", boxSizing:"border-box" }}
+            />
+          ) : (
+            <pre style={{ color:C.creamSoft, fontFamily:"inherit", whiteSpace:"pre-wrap", lineHeight:1.75, fontSize:13, margin:0, background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:16 }}>{activeContent}</pre>
+          )}
+          <div style={{ marginTop:10 }}>
+            <Btn ghost onClick={() => setShowNewTask(true)} style={{ fontSize:11 }}>+ Create task from this note</Btn>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1795,17 +1959,104 @@ function AfterglowKnowledgeV3({ setShowNewTask, isPhoneLayout }) {
 
 function AfterglowRoadmapV3({ isPhoneLayout }) {
   const phases = [
-    { phase:"V3.1", title:"Global UI rebuild", status:"Now", items:["Command Center", "Boards", "Data Hub", "Automations", "Reports", "Knowledge", "Roadmap"] },
-    { phase:"V3.2", title:"Backend databases", status:"Next", items:["Tenders API", "Documents API", "Money API", "Reports API", "Knowledge API"] },
-    { phase:"V3.3", title:"Real formulas + custom fields", status:"Next", items:["Formula builder", "custom properties", "linked records", "saved views"] },
-    { phase:"V3.4", title:"Team workspace", status:"Future", items:["roles", "owners", "comments", "assignments", "permissions"] },
-    { phase:"V4", title:"AI command assistant", status:"Future", items:["daily advisor", "tender checklist generator", "money warning", "weekly review"] },
+    { phase:"V3 — Now", status:"Now", color:C.orange, pct:75, title:"Life OS Foundation", items:[
+      { label:"Command Center redesign", done:true },
+      { label:"Connected Dashboard (tasks, routine, MOPAS, money, alerts)", done:true },
+      { label:"Boards — tasks, tenders, documents", done:true },
+      { label:"Reports — executive + copy", done:true },
+      { label:"Knowledge base — editable templates", done:true },
+      { label:"Task detail modal — full popup", done:true },
+      { label:"Mobile bottom navigation", done:true },
+      { label:"Improved sidebar with grouped nav", done:true },
+      { label:"Notification engine + email", done:true },
+      { label:"Calendar in dashboard", done:false },
+    ]},
+    { phase:"V3.2 — Next", status:"Next", color:C.blue, pct:0, title:"Backend data systems", items:[
+      { label:"Tenders full API (CRUD, stage tracking)", done:false },
+      { label:"Documents API (upload, expiry, Drive)", done:false },
+      { label:"Money API (entries, goals, ITSINDA)", done:false },
+      { label:"Reports API (save, export, share)", done:false },
+      { label:"Knowledge API (notes per user)", done:false },
+    ]},
+    { phase:"V3.3 — Soon", status:"Next", color:C.purple, pct:0, title:"Smart formulas + saved views", items:[
+      { label:"Formula builder per space", done:false },
+      { label:"Custom properties per task type", done:false },
+      { label:"Linked records (task → tender → document)", done:false },
+      { label:"Saved views and filters", done:false },
+      { label:"Smart weekly review generator", done:false },
+    ]},
+    { phase:"V4 — Future", status:"Future", color:C.gold, pct:0, title:"AI assistant + team workspace", items:[
+      { label:"Daily advisor: what to do now", done:false },
+      { label:"Tender checklist auto-generator", done:false },
+      { label:"Money pattern warning", done:false },
+      { label:"Team roles and assignments", done:false },
+      { label:"AFTERGLOW brand studio module", done:false },
+      { label:"43 Project production tracker", done:false },
+    ]},
   ];
+
+  const statusColor = { "Now":C.orange, "Next":C.blue, "Future":C.gold };
+
   return (
-    <div style={{ display:"grid", gap:14, maxWidth:1480, margin:"0 auto" }}>
-      <div style={{ ...PNL }}><div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>ROADMAP</div><h2 style={{ margin:"5px 0" }}>AFTERGLOW product direction</h2><div style={{ color:C.muted, fontSize:12 }}>Linear style roadmap showing what the platform becomes next.</div></div>
-      <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "repeat(auto-fit, minmax(260px, 1fr))", gap:12 }}>
-        {phases.map(item => <div key={item.phase} style={{ ...PNL, borderLeft:"4px solid "+(item.status === "Now" ? C.orange : item.status === "Next" ? C.blue : C.gold) }}><div style={{ display:"flex", justifyContent:"space-between", gap:8 }}><Badge color={C.gold}>{item.phase}</Badge><Badge color={item.status === "Now" ? C.orange : item.status === "Next" ? C.blue : C.creamSoft}>{item.status}</Badge></div><h3 style={{ margin:"10px 0 8px" }}>{item.title}</h3><ul style={{ color:C.creamSoft, fontSize:12, lineHeight:1.7, paddingLeft:18 }}>{item.items.map(x => <li key={x}>{x}</li>)}</ul></div>)}
+    <div style={{ display:"grid", gap:12, maxWidth:1480, margin:"0 auto" }}>
+      {/* Header */}
+      <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:"14px 18px" }}>
+        <div style={{ color:C.gold, fontSize:9, letterSpacing:2.5, fontWeight:900 }}>ROADMAP</div>
+        <div style={{ color:C.cream, fontSize:16, fontWeight:800, marginTop:2 }}>AFTERGLOW Life OS — Product direction</div>
+        <div style={{ color:C.muted, fontSize:11, marginTop:2 }}>Linear-style roadmap showing what the platform becomes. Built around MOPAS, creative growth, and life discipline.</div>
+      </div>
+
+      {/* Timeline */}
+      <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout?"1fr":"repeat(auto-fit, minmax(280px, 1fr))", gap:12 }}>
+        {phases.map((phase, idx) => (
+          <div key={phase.phase} style={{ background:C.surface, border:"1px solid "+C.border, borderTop:"4px solid "+phase.color, borderRadius:14, padding:14 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, marginBottom:10 }}>
+              <div>
+                <div style={{ color:phase.color, fontSize:9, letterSpacing:2, fontWeight:900 }}>{phase.phase}</div>
+                <div style={{ color:C.cream, fontSize:13, fontWeight:800, marginTop:2 }}>{phase.title}</div>
+              </div>
+              <Badge color={phase.color}>{phase.status}</Badge>
+            </div>
+            {phase.pct > 0 && (
+              <div style={{ marginBottom:10 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                  <span style={{ color:C.muted, fontSize:10 }}>Progress</span>
+                  <span style={{ color:phase.color, fontSize:10, fontWeight:800 }}>{phase.pct}%</span>
+                </div>
+                <div style={{ height:6, background:C.elevated, borderRadius:999, overflow:"hidden" }}>
+                  <div style={{ width:`${phase.pct}%`, height:"100%", background:phase.color, transition:"width .5s" }} />
+                </div>
+              </div>
+            )}
+            <div style={{ display:"grid", gap:5 }}>
+              {phase.items.map(item => (
+                <div key={item.label} style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+                  <span style={{ fontSize:12, flexShrink:0, marginTop:1 }}>{item.done ? "✅" : phase.status==="Now"?"🔄":"⬜"}</span>
+                  <span style={{ color:item.done?C.muted:C.creamSoft, fontSize:11, lineHeight:1.45, textDecoration:item.done?"line-through":"none" }}>{item.label}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop:10, color:C.muted, fontSize:9 }}>{phase.items.filter(i=>i.done).length}/{phase.items.length} complete</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Vision statement */}
+      <div style={{ background:C.surface, border:"1px solid "+C.border, borderLeft:"4px solid "+C.orange, borderRadius:14, padding:16 }}>
+        <div style={{ color:C.gold, fontSize:9, letterSpacing:2.5, fontWeight:900, marginBottom:8 }}>THE VISION</div>
+        <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout?"1fr":"1fr 1fr 1fr", gap:10 }}>
+          {[
+            { icon:"🏢", title:"MOPAS becomes unstoppable", desc:"Every tender tracked, prepared, and submitted through one system. No document expires unnoticed. No deadline is missed." },
+            { icon:"🎬", title:"AFTERGLOW becomes real", desc:"43 Project moves forward every night. The brand has a portfolio. The studio becomes a recognized creative identity in Rwanda." },
+            { icon:"💪", title:"Life runs by discipline", desc:"Every morning starts the same way. Money is tracked. Body is trained. Skills grow daily. The system runs the life." },
+          ].map(v => (
+            <div key={v.title} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:14 }}>
+              <div style={{ fontSize:24, marginBottom:8 }}>{v.icon}</div>
+              <div style={{ color:C.cream, fontSize:13, fontWeight:800, marginBottom:6 }}>{v.title}</div>
+              <div style={{ color:C.creamSoft, fontSize:11, lineHeight:1.6 }}>{v.desc}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1962,29 +2213,41 @@ const buildTodayDisciplinePlanEmail = (tasks, settings) => {
   const subject = `${subjectPrefix} ACTION — ${nowLabel} — ${actionTitle}`;
   const css = "font-family:Segoe UI,Arial,sans-serif;color:#222;line-height:1.55";
   const stepHtml = nextSteps.map((step, index) => `<li style="margin-bottom:8px"><strong>${index + 1}.</strong> ${escapeHtml(step)}</li>`).join("");
+  const tenderAlert = (() => {
+    const urgentTenders = safeTasks.filter(t => isMopasTenderWork(t) && isTaskOpen(t) && (t.priority==="Urgent" || (isDateKey(t.due) && (daysBetweenLocal(todayKey, t.due)||0) <= 5)));
+    if (!urgentTenders.length) return "";
+    return `<div style="background:#fff8f5;border:1px solid #fac8a0;border-left:4px solid #e8732a;border-radius:10px;padding:12px;margin-bottom:12px"><div style="font-size:11px;color:#999;letter-spacing:1.5px;font-weight:800;text-transform:uppercase;margin-bottom:5px">MOPAS TENDER ALERT</div>${urgentTenders.slice(0,3).map(t=>`<div style="color:#222;font-size:13px;font-weight:700;margin-bottom:3px">${escapeHtml(t.title)}</div><div style="color:#666;font-size:12px">Stage: ${escapeHtml(t.tenderStage||"New")} · Due: ${escapeHtml(t.due||"No deadline")}</div>`).join("<hr style='border:none;border-top:1px solid #f0e8e0;margin:6px 0'/>")}</div>`;
+  })();
   const htmlBody = `
-    <div style="${css};max-width:680px;margin:0 auto;padding:20px;background:#fafafa">
-      <div style="background:#1f1f1f;color:#f5f0e8;border-radius:16px;padding:22px;margin-bottom:14px">
-        <div style="color:#d4a853;font-size:12px;letter-spacing:2px;font-weight:800">${escapeHtml(subjectPrefix)} / MOPAS</div>
-        <h1 style="margin:6px 0 4px;font-size:24px">Current Action</h1>
-        <div style="color:#b8b0a0">${escapeHtml(humanDate)} · ${escapeHtml(nowLabel)} Kigali time</div>
+    <div style="${css};max-width:680px;margin:0 auto;padding:20px;background:#f5f5f5">
+      <div style="background:#1a1a1a;color:#f5f0e8;border-radius:16px;padding:20px 22px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="color:#d4a853;font-size:11px;letter-spacing:2.5px;font-weight:900;text-transform:uppercase">${escapeHtml(subjectPrefix)}</div>
+          <div style="font-size:22px;font-weight:900;margin-top:4px;color:#f5f0e8">Current Action</div>
+        </div>
+        <div style="text-align:right">
+          <div style="color:#b8b0a0;font-size:12px">${escapeHtml(humanDate)}</div>
+          <div style="color:#d4a853;font-weight:800;font-size:16px">${escapeHtml(nowLabel)}</div>
+        </div>
       </div>
-      <div style="background:#fff;border:1px solid #e6e0d8;border-left:5px solid #e8732a;border-radius:14px;padding:18px;margin-bottom:14px">
-        <div style="font-size:12px;color:#777;letter-spacing:1.5px;font-weight:800;text-transform:uppercase">${escapeHtml(greeting)}</div>
-        <h2 style="margin:6px 0 8px;font-size:22px;color:#e8732a">${escapeHtml(actionTitle)}</h2>
-        <p style="margin:0;color:#333"><strong>${escapeHtml(urgencyLine)}</strong></p>
-        <p style="margin:8px 0 0;color:#666">Space: <strong>${escapeHtml(actionSpace)}</strong></p>
-        ${merged.notifications.includeWhyInEmail !== false ? `<p style="margin:8px 0 0;color:#555">Why: ${escapeHtml(actionWhy)}</p>` : ""}
+      <div style="background:#fff;border:1px solid #e6e0d8;border-left:5px solid #e8732a;border-radius:14px;padding:18px;margin-bottom:12px">
+        <div style="font-size:10px;color:#aaa;letter-spacing:2px;font-weight:800;text-transform:uppercase;margin-bottom:6px">${escapeHtml(greeting)}</div>
+        <h2 style="margin:0 0 8px;font-size:20px;color:#e8732a;line-height:1.2">${escapeHtml(actionTitle)}</h2>
+        <p style="margin:0 0 6px;color:#333;font-size:13px"><strong>${escapeHtml(urgencyLine)}</strong></p>
+        <p style="margin:0 0 4px;color:#666;font-size:12px">Space: <strong style="color:#222">${escapeHtml(actionSpace)}</strong></p>
+        ${merged.notifications.includeWhyInEmail !== false ? `<p style="margin:6px 0 0;color:#555;font-size:12px;background:#fafaf8;border-radius:8px;padding:8px 10px;border-left:3px solid #d4a853">Why this matters: ${escapeHtml(actionWhy)}</p>` : ""}
       </div>
-      <div style="background:#fff;border:1px solid #e6e0d8;border-radius:14px;padding:18px;margin-bottom:14px">
-        <h3 style="margin:0 0 10px;font-size:16px;color:#222">Next steps</h3>
-        <ol style="margin:0;padding-left:20px">${stepHtml}</ol>
+      <div style="background:#fff;border:1px solid #e6e0d8;border-radius:14px;padding:18px;margin-bottom:12px">
+        <div style="font-size:10px;color:#aaa;letter-spacing:2px;font-weight:800;text-transform:uppercase;margin-bottom:10px">NEXT STEPS</div>
+        <ol style="margin:0;padding-left:18px">${stepHtml}</ol>
       </div>
-      <div style="background:#fff;border:1px solid #e6e0d8;border-radius:14px;padding:14px;color:#555;font-size:13px">
-        ${routineNote ? `<div>${escapeHtml(routineNote)}</div>` : ""}
-        ${nextBlockNote ? `<div>${escapeHtml(nextBlockNote)}</div>` : ""}
-        ${lateNote ? `<div style="color:#c84f1d;font-weight:700">${escapeHtml(lateNote)}</div>` : ""}
-        ${docNote ? `<div style="color:#c84f1d;font-weight:700">${escapeHtml(docNote)}</div>` : ""}
+      ${tenderAlert}
+      <div style="background:#fff;border:1px solid #e6e0d8;border-radius:14px;padding:14px;color:#666;font-size:12px;line-height:1.7">
+        ${routineNote ? `<div>📅 ${escapeHtml(routineNote)}</div>` : ""}
+        ${nextBlockNote ? `<div>⏭ ${escapeHtml(nextBlockNote)}</div>` : ""}
+        ${lateNote ? `<div style="color:#c84f1d;font-weight:700">⚠ ${escapeHtml(lateNote)}</div>` : ""}
+        ${docNote ? `<div style="color:#c84f1d;font-weight:700">📄 ${escapeHtml(docNote)}</div>` : ""}
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid #eee;color:#999;font-size:11px">Sent from AFTERGLOW Life OS · Kigali, Rwanda</div>
       </div>
     </div>`;
   const textBody = [
@@ -2212,11 +2475,7 @@ function TaskDetail({ task, onUpdate, onDelete }) {
     onUpdate({ ...task, title: titleDraft.trim() });
   };
 
-  if (!task) return (
-    <div style={{ ...PNL, display:"flex", alignItems:"center", justifyContent:"center", minHeight:300, color:C.muted, fontSize:14 }}>
-      Select a task to see details
-    </div>
-  );
+  if (!task) return null;   // no panel when nothing selected — modal only
 
   const addComment = () => {
     if (task.status === "Done" || !newComment.trim()) return;
@@ -2257,18 +2516,21 @@ function TaskDetail({ task, onUpdate, onDelete }) {
   const comments = task.comments || [];
 
   return (
+    <div onClick={() => onDelete && false /* backdrop tap does nothing, user must click X */}
+      style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.72)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:12 }}
+      onMouseDown={e => { if (e.target === e.currentTarget) onDelete && false; }}
+    >
     <div style={{
-      ...PNL,
-      overflowY: "auto",
-      maxHeight: "calc(100vh - 160px)",
-      minWidth: 0,
-      maxWidth: "100%",
-      wordBreak: "break-word",
-      overflowWrap: "anywhere",
-      boxSizing: "border-box",
-      opacity: isCompleted ? .72 : 1,
+      width:"min(720px, 100%)", maxHeight:"92vh", overflowY:"auto",
+      background:C.surface, border:"1px solid "+C.border, borderRadius:18,
+      boxShadow:"0 32px 80px rgba(0,0,0,.6)", padding:20,
+      opacity: isCompleted ? .9 : 1,
       borderColor: isCompleted ? C.green : C.border,
     }}>
+      {/* Close button */}
+      <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:6 }}>
+        <button onClick={() => onDelete && onDelete(null)} style={{ width:32, height:32, borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.creamSoft, cursor:"pointer", fontSize:18, lineHeight:1 }}>×</button>
+      </div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
         <div style={{ minWidth:0, flex:1, marginRight:8 }}>
           <div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>{task.id}</div>
@@ -2390,6 +2652,7 @@ function TaskDetail({ task, onUpdate, onDelete }) {
         />
         <Btn small disabled={isCompleted} onClick={addComment} style={{ marginTop:6 }}>Add Comment</Btn>
       </div>
+    </div>
     </div>
   );
 }
@@ -4426,35 +4689,37 @@ function CalendarView({ tasks }) {
   const selectedTasks = selectedDate ? (tasksByDate[selectedDate] || []) : [];
 
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:16 }}>
-      <div style={PNL}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, marginBottom:16, flexWrap:"wrap" }}>
+    <div style={{ display:"grid", gridTemplateColumns:"minmax(0, 1fr)", gap:12 }}>
+      <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:16 }}>
+        {/* Header */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, marginBottom:14, flexWrap:"wrap" }}>
           <div>
-            <div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>FULL MONTH CALENDAR</div>
-            <h3 style={{ color:C.cream, margin:"4px 0 0", fontSize:24 }}>{monthNames[month]} {year}</h3>
+            <div style={{ color:C.gold, fontSize:9, letterSpacing:2.5, fontWeight:900 }}>CALENDAR</div>
+            <div style={{ color:C.cream, fontSize:20, fontWeight:900, marginTop:2 }}>{monthNames[month]} {year}</div>
           </div>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-            <Btn small ghost onClick={() => moveMonth(-1)}>Previous Month</Btn>
-            <Btn small orange onClick={goToday}>Today</Btn>
-            <Btn small ghost onClick={() => moveMonth(1)}>Next Month</Btn>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+            <div style={{ display:"flex", gap:6 }}>
+              {[{c:C.blue,l:"Future"},{c:C.orange,l:"Today"},{c:C.red,l:"Overdue"},{c:C.green,l:"Done"}].map(x=>(
+                <div key={x.l} style={{ display:"flex", gap:4, alignItems:"center" }}>
+                  <div style={{ width:8, height:8, borderRadius:"50%", background:x.c }} />
+                  <span style={{ color:C.muted, fontSize:10 }}>{x.l}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => moveMonth(-1)} style={{ width:30, height:30, borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, cursor:"pointer", fontSize:14 }}>‹</button>
+            <button onClick={goToday} style={{ padding:"5px 12px", borderRadius:8, border:"1px solid "+C.gold, background:C.gold+"18", color:C.gold, fontSize:11, fontWeight:800, cursor:"pointer" }}>Today</button>
+            <button onClick={() => moveMonth(1)} style={{ width:30, height:30, borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, cursor:"pointer", fontSize:14 }}>›</button>
           </div>
-        </div>
-
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
-          <Badge color={C.blue}>Future deadline</Badge>
-          <Badge color={C.orange}>Due today</Badge>
-          <Badge color={C.red}>Overdue</Badge>
-          <Badge color={C.green}>Done</Badge>
         </div>
 
         <div style={{ overflowX:"auto", paddingBottom:4 }}>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7, minmax(112px, 1fr))", gap:8, minWidth:780 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7, minmax(90px, 1fr))", gap:5, minWidth:640 }}>
             {weekDays.map(d => (
-              <div key={d} style={{ textAlign:"center", fontSize:12, color:C.gold, padding:"8px 6px", fontWeight:800, letterSpacing:1, background:C.bg, borderRadius:8, border:"1px solid "+C.border }}>{d}</div>
+              <div key={d} style={{ textAlign:"center", fontSize:10, color:C.gold, padding:"6px 4px", fontWeight:900, letterSpacing:1.5 }}>{d}</div>
             ))}
             {cells.map((day, i) => {
               if (!day) {
-                return <div key={i} style={{ minHeight:118, borderRadius:10, background:"#00000018", border:"1px dashed "+C.border, opacity:.45 }} />;
+                return <div key={i} style={{ minHeight:80, borderRadius:8, background:C.bg+"44", border:"1px dashed "+C.border, opacity:.3 }} />;
               }
               const key = dateKeyForDay(day);
               const dayTasks = tasksByDate[key] || [];
@@ -4466,7 +4731,7 @@ function CalendarView({ tasks }) {
                   key={key}
                   onClick={() => setSelectedDate(key)}
                   style={{
-                    minHeight:118,
+                    minHeight:80,
                     borderRadius:10,
                     padding:8,
                     cursor:"pointer",
@@ -4895,38 +5160,53 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
         </div>
       </SettingCard>}
 
-      {tab === "Notifications" && <SettingCard title="EMAIL NOTIFICATIONS" note="The email now sends a short current-action message based on the time of day and the active task/block.">
-        <FieldGrid>
-          <Input label="EMAIL ADDRESS" value={merged.notifications.emailAddress} onChange={e => update("notifications", "emailAddress", e.target.value)} />
-          <Input label="GOOGLE APPS SCRIPT EMAIL URL" value={merged.notifications.googleAppsScriptEmailUrl} onChange={e => update("notifications", "googleAppsScriptEmailUrl", e.target.value)} placeholder="Paste Apps Script Web App URL ending with /exec" />
-          <Select label="NOTIFICATION METHOD" options={["Email", "Browser", "WhatsApp later"]} value={merged.notifications.method} onChange={e => update("notifications", "method", e.target.value)} />
-          <Input label="SEND TIME" type="time" value={merged.notifications.todayDisciplineEmailTime} onChange={e => update("notifications", "todayDisciplineEmailTime", e.target.value)} />
-          <Select label="EMAIL MODE" options={["Current action only", "Morning plan", "Full report"]} value={merged.notifications.emailMode || "Current action only"} onChange={e => update("notifications", "emailMode", e.target.value)} />
-          <Select label="EMAIL TONE" options={["Direct", "Strict", "Motivational"]} value={merged.notifications.emailTone || "Direct"} onChange={e => update("notifications", "emailTone", e.target.value)} />
-          <Input label="ACTION WINDOW MINUTES" type="number" value={merged.notifications.actionWindowMinutes || 60} onChange={e => update("notifications", "actionWindowMinutes", Number(e.target.value || 60))} />
-          <Input label="EMAIL SUBJECT PREFIX" value={merged.notifications.emailSubjectPrefix || "AFTERGLOW"} onChange={e => update("notifications", "emailSubjectPrefix", e.target.value)} />
-        </FieldGrid>
-        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:C.radius || 10, padding:12, margin:"10px 0", color:C.creamSoft, fontSize:12, lineHeight:1.55 }}>
-          <div style={{ color:C.gold, fontSize:11, letterSpacing:1.5, marginBottom:5 }}>CURRENT ACTION EMAIL</div>
-          <div>The email will now focus on one active action: what to do now, start time, space, urgency, why it matters, and up to 3 next steps. Full schedules and long reports are no longer included by default.</div>
-          <div style={{ marginTop:6 }}>Endpoint status: {(merged.notifications.googleAppsScriptEmailUrl || merged.documents.googleAppsScriptUploadUrl) ? "Ready to send through Apps Script" : "Missing Apps Script URL"}</div>
+      {tab === "Notifications" && <SettingCard title="NOTIFICATIONS & EMAIL" note="Control when you get notified, what the email contains, and how it is sent.">
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+C.orange, borderRadius:12, padding:14, marginBottom:16 }}>
+          <div style={{ color:C.orange, fontSize:10, letterSpacing:2, fontWeight:900, marginBottom:6 }}>HOW THE EMAIL WORKS</div>
+          <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.65 }}>
+            Every morning (at your set time), AFTERGLOW sends one focused email with: the current action based on time of day, urgency line with start time and deadline, why it matters, up to 3 next steps from the task checklist, routine progress, late task warning, and MOPAS tender alert if urgent.
+            <br/><strong style={{ color:C.cream }}>Requirement:</strong> You must deploy a Google Apps Script as a Web App and paste the /exec URL below. Without it, email does not send but the app still works fully.
+          </div>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:8, marginBottom:10 }}>
-          <Toggle label="Enable email notifications" checked={merged.notifications.emailNotifications} onChange={v => update("notifications", "emailNotifications", v)} />
-          <Toggle label="Send current action email automatically" checked={merged.notifications.todayDisciplineEmail} onChange={v => update("notifications", "todayDisciplineEmail", v)} />
-          <Toggle label="Show task start time" checked={merged.notifications.includeTaskStartTimes !== false} onChange={v => update("notifications", "includeTaskStartTimes", v)} />
-          <Toggle label="Include why it matters" checked={merged.notifications.includeWhyInEmail !== false} onChange={v => update("notifications", "includeWhyInEmail", v)} />
-          <Toggle label="Include next block" checked={merged.notifications.includeNextBlock !== false} onChange={v => update("notifications", "includeNextBlock", v)} />
-          <Toggle label="Include routine progress" checked={merged.notifications.includeRoutineProgressInCurrentEmail !== false} onChange={v => update("notifications", "includeRoutineProgressInCurrentEmail", v)} />
-          <Toggle label="Include short late-task warning" checked={merged.notifications.includeLateWarningInCurrentEmail !== false} onChange={v => update("notifications", "includeLateWarningInCurrentEmail", v)} />
-          <Toggle label="Include document warning" checked={merged.notifications.includeDocumentAlertInCurrentEmail} onChange={v => update("notifications", "includeDocumentAlertInCurrentEmail", v)} />
+        <FieldGrid>
+          <Input label="YOUR EMAIL ADDRESS" value={merged.notifications.emailAddress} onChange={e => update("notifications", "emailAddress", e.target.value)} placeholder="ishimwesamuel3d@gmail.com" />
+          <Input label="APPS SCRIPT URL (/exec)" value={merged.notifications.googleAppsScriptEmailUrl} onChange={e => update("notifications", "googleAppsScriptEmailUrl", e.target.value)} placeholder="https://script.google.com/macros/s/...../exec" />
+          <Input label="SEND TIME (daily)" type="time" value={merged.notifications.todayDisciplineEmailTime} onChange={e => update("notifications", "todayDisciplineEmailTime", e.target.value)} />
+          <Select label="EMAIL TONE" options={["Direct", "Strict", "Motivational"]} value={merged.notifications.emailTone || "Direct"} onChange={e => update("notifications", "emailTone", e.target.value)} />
+          <Select label="EMAIL MODE" options={["Current action only", "Morning plan", "Full report"]} value={merged.notifications.emailMode || "Current action only"} onChange={e => update("notifications", "emailMode", e.target.value)} />
+          <Input label="ACTION WINDOW (minutes)" type="number" value={merged.notifications.actionWindowMinutes || 60} onChange={e => update("notifications", "actionWindowMinutes", Number(e.target.value || 60))} />
+          <Input label="EMAIL SUBJECT PREFIX" value={merged.notifications.emailSubjectPrefix || "AFTERGLOW"} onChange={e => update("notifications", "emailSubjectPrefix", e.target.value)} />
+          <Select label="NOTIFICATION METHOD" options={["Email", "Browser", "WhatsApp later"]} value={merged.notifications.method} onChange={e => update("notifications", "method", e.target.value)} />
+        </FieldGrid>
+        <div style={{ color:C.gold, fontSize:10, letterSpacing:2, fontWeight:900, margin:"14px 0 8px" }}>WHAT THE EMAIL INCLUDES</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:7, marginBottom:12 }}>
+          {[
+            { key:"emailNotifications", label:"Enable email notifications" },
+            { key:"todayDisciplineEmail", label:"Auto-send daily at scheduled time" },
+            { key:"includeTaskStartTimes", label:"Show task start time in email" },
+            { key:"includeWhyInEmail", label:"Include why this task matters" },
+            { key:"includeNextBlock", label:"Show next time block coming up" },
+            { key:"includeRoutineProgressInCurrentEmail", label:"Include routine progress (e.g. 5/12)" },
+            { key:"includeLateWarningInCurrentEmail", label:"Include late task warning" },
+            { key:"includeDocumentAlertInCurrentEmail", label:"Include document expiry alert" },
+          ].map(({ key, label }) => (
+            <Toggle key={key} label={label} checked={merged.notifications[key] !== false && merged.notifications[key] !== undefined ? merged.notifications[key] : true} onChange={v => update("notifications", key, v)} />
+          ))}
+        </div>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:12, marginBottom:10 }}>
+          <div style={{ color:C.gold, fontSize:10, letterSpacing:1.5, marginBottom:5 }}>ENDPOINT STATUS</div>
+          {(merged.notifications.googleAppsScriptEmailUrl || merged.documents.googleAppsScriptUploadUrl) ? (
+            <div style={{ color:C.green, fontSize:12, fontWeight:800 }}>✓ Apps Script URL configured — ready to send</div>
+          ) : (
+            <div style={{ color:C.red, fontSize:12 }}>✗ No Apps Script URL. Email will not send until you add it above.</div>
+          )}
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-          <Btn orange onClick={() => sendTodayDisciplineEmail && sendTodayDisciplineEmail({ manual:true })}>Send Current Action Email Now</Btn>
-          <Btn ghost onClick={() => update("notifications", "googleAppsScriptEmailUrl", merged.documents.googleAppsScriptUploadUrl || "")}>Use Drive Upload URL</Btn>
+          <Btn orange onClick={() => sendTodayDisciplineEmail && sendTodayDisciplineEmail({ manual:true })}>Send email now (test)</Btn>
+          <Btn ghost onClick={() => update("notifications", "googleAppsScriptEmailUrl", merged.documents.googleAppsScriptUploadUrl || "")}>Copy from Drive URL</Btn>
         </div>
-        {emailNotice && <div style={{ marginTop:10, color: emailNotice.type === "success" ? C.green : emailNotice.type === "error" ? C.red : C.gold, fontSize:12, lineHeight:1.5 }}>{emailNotice.message}</div>}
-        <div style={{ color:C.muted, fontSize:11, marginTop:10, lineHeight:1.5 }}>Automatic email sends once per day when the app is open after the selected time. For closed-app automation, use an Apps Script trigger later.</div>
+        {emailNotice && <div style={{ marginTop:10, background:emailNotice.type==="success"?C.green+"18":emailNotice.type==="error"?C.red+"18":C.blue+"18", border:"1px solid "+(emailNotice.type==="success"?C.green:emailNotice.type==="error"?C.red:C.blue), borderRadius:10, padding:10, color:C.cream, fontSize:12, lineHeight:1.45 }}>{emailNotice.message}</div>}
+        <div style={{ color:C.muted, fontSize:11, marginTop:10, lineHeight:1.55 }}>Auto email sends once per day when the app is open past the scheduled time. For server-side scheduling (sends even when app is closed), set a time-based trigger inside your Apps Script editor.</div>
       </SettingCard>}
     </div>
   );
@@ -6369,13 +6649,7 @@ function AfterglowApp() {
         {/* Logo + identity */}
         <div style={{ padding:"18px 14px 12px", borderBottom:"1px solid "+C.border }}>
           <Logo size={safeSettings.appearance.logoSize || safeSettings.general.logoSize} />
-          {safeSettings.appearance.workspaceCard !== false && (
-            <div style={{ marginTop:10, background:C.elevated, border:"1px solid "+C.border, borderRadius:10, padding:"9px 11px" }}>
-              <div style={{ color:C.gold, fontSize:9, letterSpacing:2.5, fontWeight:900 }}>AFTERGLOW / MOPAS</div>
-              <div style={{ fontWeight:800, fontSize:13, color:C.cream, marginTop:2 }}>{safeSettings.general.userName || "ISHIMWE Samuel"}</div>
-              <div style={{ fontSize:10, color:C.creamSoft, marginTop:2 }}>Discipline · Operations · Creative · Growth</div>
-            </div>
-          )}
+
         </div>
 
         {/* Nav body */}
@@ -6522,7 +6796,7 @@ function AfterglowApp() {
           ) : view === "settings" ? (
             <SettingsView settings={safeSettings} setSettings={setSettings} tasks={tasks} exportBackup={exportBackup} importBackup={importBackup} resetSettingsOnly={resetSettingsOnly} clearTestData={clearTestData} sendTodayDisciplineEmail={sendTodayDisciplineEmail} emailNotice={emailNotice} />
           ) : (
-            <div style={{ display:"grid", gridTemplateColumns: view === "list" ? (isCompactLayout ? "1fr" : "minmax(0, 1fr) minmax(320px, 500px)") : "1fr", gap:18, alignItems:"start", minWidth:0, maxWidth:"100%" }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:18, alignItems:"start", minWidth:0, maxWidth:"100%" }}>
               <div style={{ minWidth:0, overflow:"hidden" }}>
                 {view === "list" && (activeSpace === "money" ? <><MoneySpaceFinancialHealth tasks={tasks} onUpdate={updateTask} /><ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} /></> : <ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} />)}
                 {view === "board" && <BoardView tasks={filtered} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} />}
@@ -6533,23 +6807,14 @@ function AfterglowApp() {
                 {view === "daily report" && activeSpace === "mopas" && <DailyReportView />}
                 {view === "tender folder" && activeSpace === "mopas" && <TenderFolderCreator />}
               </div>
-              {view === "list" && <TaskDetail task={selected} onUpdate={updateTask} onDelete={deleteTask} />}
             </div>
           )}
           </SafeViewBoundary>
         </div>
       </main>
 
-      {showNewTask && <NewTaskModal space={activeSpace} onSave={createTask} onClose={() => setShowNewTask(false)} />}
-      {showEndDayReview && (
-        <EndDayReviewModal
-          tasks={tasks}
-          onClose={() => setShowEndDayReview(false)}
-          onSaveReview={saveEndDayReview}
-          onMoveNormalToTomorrow={moveUnfinishedNormalTasksToTomorrow}
-          onGenerateTomorrowRoutines={generateTomorrowRoutineTasks}
-        />
-      )}
+      {/* Task detail modal — shown when a task is selected */}
+      {selected && <TaskDetail task={selected} onUpdate={updateTask} onDelete={() => setSelected(null)} />}
 
       {/* ── PHONE BOTTOM NAV ── */}
       {isPhoneLayout && (
