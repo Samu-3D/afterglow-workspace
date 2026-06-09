@@ -1037,69 +1037,39 @@ function AfterglowCommandHubV3({ tasks, settings, goSpace, setView, setActiveSpa
     { key:"money", title:"Money", value:rwf(metrics.moneyDirection), note:"direction today", color:metrics.moneyDirection >= 0 ? C.green : C.red, action:() => { setActiveSpace("money"); setView("list"); } },
     { key:"alerts", title:"Alerts", value:riskCount, note:"late + docs", color:riskCount ? C.red : C.green, action:() => setMode("alerts") },
   ];
-  const todayStr = new Date().toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric" });
-  const lifeScoreColor = metrics.formulaLifeScore >= 70 ? C.green : metrics.formulaLifeScore >= 45 ? C.orange : C.red;
-
   return (
-    <div style={{ display:"grid", gap:12, maxWidth:1320, margin:"0 auto" }}>
-
-      {/* ── TODAY COMMAND STRIP ── */}
-      <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "minmax(0,1fr) auto", gap:12, alignItems:"start" }}>
-        {/* Main mission card */}
-        <div style={{ background:`linear-gradient(135deg, ${C.surface}, ${C.elevated})`, border:"1px solid "+C.border, borderLeft:"5px solid "+(next && isLateTask(next) ? C.red : C.orange), borderRadius:16, padding:isPhoneLayout ? 14 : 18 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10, flexWrap:"wrap" }}>
-            <div style={{ minWidth:0, flex:1 }}>
-              <div style={{ color:C.gold, fontSize:9, letterSpacing:2.5, fontWeight:900, marginBottom:6 }}>TODAY · {todayStr.toUpperCase()}</div>
-              <div style={{ fontSize:isPhoneLayout ? 16 : 20, fontWeight:900, lineHeight:1.2, color:next ? C.cream : C.muted }}>{next ? next.title : "No active mission — create or sync tasks"}</div>
-              {next && <div style={{ color:C.creamSoft, fontSize:12, marginTop:6 }}>{getSpaceLabel(next.space)} {next.due ? "· Due "+next.due : ""}{next.time ? " · "+next.time : ""}{next.goal ? " — "+next.goal : ""}</div>}
-              {next && <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:8 }}><Badge color={priorityColor(next.priority)}>{next.priority}</Badge><Badge color={statusColor(next.status)}>{next.status}</Badge>{isLateTask(next) && <Badge color={C.red}>{taskLateInfo(next).label}</Badge>}</div>}
+    <div style={{ display:"grid", gap:14, maxWidth:1320, margin:"0 auto" }}>
+      <div style={{ ...PNL, padding:isPhoneLayout ? 16 : 22, background:`linear-gradient(135deg, ${C.elevated}, ${C.surface})` }}>
+        <div style={{ display:"grid", gridTemplateColumns:isPhoneLayout ? "1fr" : "minmax(0,1.3fr) minmax(260px,.7fr)", gap:14, alignItems:"stretch" }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>AFTERGLOW LIFE OS / CLEAN COMMAND CENTER</div>
+            <h1 style={{ margin:"6px 0", fontSize:isPhoneLayout ? 24 : 34, lineHeight:1.05 }}>One screen. One mission. Everything else waits.</h1>
+            <p style={{ color:C.creamSoft, margin:"8px 0 0", lineHeight:1.55, maxWidth:760 }}>The overview is now reduced: current mission, routine, money, alerts, and notifications. Deep boards and databases are still available when you need them.</p>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
+              <Btn orange onClick={openNext}>{next ? "Open current mission" : "Create first mission"}</Btn>
+              {next && <Btn ghost onClick={markNextProgress}>{next.status === "To Do" ? "Start" : "Mark done"}</Btn>}
+              <Btn ghost onClick={() => setShowEndDayReview(true)}>End Day Review</Btn>
+              <Btn ghost onClick={() => setShowDeep(v => !v)}>{showDeep ? "Hide deep system" : "Show deep system"}</Btn>
             </div>
-            <div style={{ display:"flex", gap:6, flexWrap:"wrap", flexShrink:0 }}>
-              <Btn orange onClick={openNext}>{next ? "Open" : "Create"}</Btn>
-              {next && <Btn ghost onClick={markNextProgress}>{next.status === "To Do" ? "Start" : "Done"}</Btn>}
-            </div>
+          </div>
+          <div style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"5px solid "+(next && isLateTask(next) ? C.red : C.orange), borderRadius:16, padding:16, minWidth:0 }}>
+            <div style={{ color:C.orange, fontSize:11, letterSpacing:2, fontWeight:900 }}>CURRENT MISSION</div>
+            <div style={{ fontSize:20, fontWeight:900, marginTop:8, lineHeight:1.25 }}>{next ? next.title : "No active mission selected"}</div>
+            <div style={{ color:C.muted, fontSize:12, marginTop:8 }}>{next ? `${getSpaceLabel(next.space)} · ${next.due || "No deadline"}${next.time ? " · "+next.time : ""}` : "Create a task or sync from cloud."}</div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:12 }}>{next && <><Badge color={priorityColor(next.priority)}>{next.priority}</Badge><Badge color={statusColor(next.status)}>{next.status}</Badge>{isLateTask(next) && <Badge color={C.red}>{taskLateInfo(next).label}</Badge>}</>}</div>
           </div>
         </div>
-        {/* Score + quick actions */}
-        {!isPhoneLayout && (
-          <div style={{ display:"grid", gap:8, minWidth:220 }}>
-            <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:14 }}>
-              <div style={{ color:C.muted, fontSize:9, letterSpacing:2, marginBottom:4 }}>LIFE SCORE</div>
-              <div style={{ color:lifeScoreColor, fontSize:32, fontWeight:900, lineHeight:1 }}>{Math.round(metrics.formulaLifeScore)}%</div>
-              <div style={{ height:4, background:C.bg, borderRadius:2, marginTop:8, overflow:"hidden" }}><div style={{ width:`${metrics.formulaLifeScore}%`, height:"100%", background:lifeScoreColor, transition:"width .4s" }} /></div>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
-              <Btn ghost onClick={() => setShowEndDayReview(true)} style={{ fontSize:11 }}>End Day</Btn>
-              <Btn ghost onClick={() => setShowDeep(v => !v)} style={{ fontSize:11 }}>{showDeep ? "Less" : "More"}</Btn>
-              <Btn ghost onClick={() => setShowNewTask(true)} style={{ fontSize:11, gridColumn:"1/-1" }}>+ New Task</Btn>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Quick stats row */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(130px, 1fr))", gap:8 }}>
-        {[
-          { key:"routine", title:"Routine", value:`${metrics.routineDone}/${metrics.routineTotal}`, note:"today done", color:C.gold, action:() => setMode("routine") },
-          { key:"tasks", title:"Tasks", value:`${metrics.doneToday.length}/${metrics.todayTasks.length || 0}`, note:"completed", color:C.orange, action:() => setView("list") },
-          { key:"money", title:"Money", value:rwf(metrics.moneyDirection), note:"direction", color:metrics.moneyDirection >= 0 ? C.green : C.red, action:() => { setActiveSpace("money"); setView("list"); } },
-          { key:"alerts", title:"Alerts", value:riskCount, note:"issues", color:riskCount ? C.red : C.green, action:() => setMode("alerts") },
-        ].map(card => <div key={card.key} onClick={card.action} style={{ background:C.surface, border:"1px solid "+C.border, borderLeft:"3px solid "+card.color, borderRadius:12, padding:isPhoneLayout ? 10 : 12, cursor:"pointer", transition:"background .15s" }}>
-          <div style={{ color:C.creamSoft, fontSize:9, letterSpacing:1.5, textTransform:"uppercase", marginBottom:2 }}>{card.title}</div>
-          <div style={{ color:card.color, fontSize:isPhoneLayout ? 17 : 20, fontWeight:900, lineHeight:1 }}>{card.value}</div>
-          <div style={{ color:C.muted, fontSize:10, marginTop:3 }}>{card.note}</div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(160px, 1fr))", gap:10 }}>
+        {quickCards.map(card => <div key={card.key} onClick={card.action} style={{ background:C.surface, border:"1px solid "+C.border, borderLeft:"4px solid "+card.color, borderRadius:14, padding:13, cursor:"pointer" }}>
+          <div style={{ color:C.creamSoft, fontSize:10, letterSpacing:1.5, textTransform:"uppercase" }}>{card.title}</div>
+          <div style={{ color:card.color, fontSize:22, fontWeight:900, marginTop:4 }}>{card.value}</div>
+          <div style={{ color:C.muted, fontSize:11, marginTop:3 }}>{card.note}</div>
         </div>)}
-        {isPhoneLayout && (
-          <div onClick={() => setShowEndDayReview(true)} style={{ background:C.surface, border:"1px solid "+C.border, borderLeft:"3px solid "+C.purple, borderRadius:12, padding:10, cursor:"pointer" }}>
-            <div style={{ color:C.creamSoft, fontSize:9, letterSpacing:1.5, textTransform:"uppercase", marginBottom:2 }}>Review</div>
-            <div style={{ color:C.purple, fontSize:17, fontWeight:900, lineHeight:1 }}>EDR</div>
-            <div style={{ color:C.muted, fontSize:10, marginTop:3 }}>end day</div>
-          </div>
-        )}
       </div>
 
-      {/* ── Mode tabs ── */}
-      <div style={{ display:"flex", gap:6, flexWrap:"wrap", background:C.surface, border:"1px solid "+C.border, borderRadius:12, padding:"4px 6px" }}>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
         {[ ["today", "Today"], ["routine", "Routine"], ["money", "Money"], ["alerts", "Alerts"], ["notifications", "Notifications"] ].map(([key, label]) => <Btn key={key} small orange={mode === key} ghost={mode !== key} onClick={() => setMode(key)}>{label}</Btn>)}
       </div>
 
@@ -5829,161 +5799,153 @@ function AfterglowApp() {
   const isGlobalView = GLOBAL_VIEWS.includes(view);
   const viewTitle = view === "dashboard" ? "AFTERGLOW Command Center" : view === "boards" ? "Boards" : view === "database" ? "Data Hub" : view === "automations" ? "Automations" : view === "reports" ? "Reports" : view === "knowledge" ? "Knowledge Base" : view === "roadmap" ? "Roadmap" : view === "life os" ? "AFTERGLOW Life OS Lab" : view === "settings" ? "Settings" : sp.name;
 
-  // Mobile bottom nav items
-  const mobileBottomNav = [
-    { id:"dashboard", label:"Home", icon:"▦", action:() => { setView("dashboard"); setSelected(null); } },
-    { id:"list", label:"Tasks", icon:"☰", action:() => { setView("list"); } },
-    { id:"mopas-space", label:"MOPAS", icon:"◈", action:() => goSpace("mopas") },
-    { id:"add", label:"Add", icon:"+", action:() => setShowNewTask(true), accent:true },
-    { id:"money-space", label:"Money", icon:"◉", action:() => goSpace("money") },
-    { id:"reports", label:"Reports", icon:"▧", action:() => { setView("reports"); setSelected(null); } },
-    { id:"settings", label:"More", icon:"⚙", action:() => setSidebarOpen(o => !o) },
+  const mobileNavItems = [
+    { id:"dashboard", label:"Home", icon:"▦", fn:() => { setView("dashboard"); setSelected(null); if (isMobileLayout) setSidebarOpen(false); } },
+    { id:"list",      label:"Tasks", icon:"☰", fn:() => { setView("list"); if (isMobileLayout) setSidebarOpen(false); } },
+    { id:"mopas",     label:"MOPAS", icon:"◈", fn:() => goSpace("mopas") },
+    { id:"add",       label:"Add",   icon:"+", fn:() => setShowNewTask(true), accent:true },
+    { id:"money",     label:"Money", icon:"◉", fn:() => goSpace("money") },
+    { id:"reports",   label:"Reports",icon:"▧",fn:() => { setView("reports"); setSelected(null); if (isMobileLayout) setSidebarOpen(false); } },
+    { id:"_menu",     label:"Menu",  icon:"⋯", fn:() => setSidebarOpen(o => !o) },
   ];
-  const mobileBottomActiveId = view === "dashboard" ? "dashboard" : view === "list" ? "list" : view === "reports" ? "reports" : view === "settings" ? "settings" : activeSpace === "mopas" && !isGlobalView ? "mopas-space" : activeSpace === "money" && !isGlobalView ? "money-space" : "";
+  const mobileActiveId = view === "dashboard" ? "dashboard" : view === "reports" ? "reports" : (!isGlobalView && activeSpace === "mopas") ? "mopas" : (!isGlobalView && activeSpace === "money") ? "money" : view === "list" ? "list" : "";
 
   return (
     <div style={{ display:"flex", height:"100vh", minHeight:"100dvh", background:C.bg, color:C.cream, fontFamily:"Segoe UI, Helvetica Neue, sans-serif", overflow:"hidden", fontSize: safeSettings.appearance.fontSize === "small" ? 13 : safeSettings.appearance.fontSize === "large" ? 16 : safeSettings.appearance.compactMode ? 13 : 14 }}>
       {isMobileLayout && sidebarOpen && <div onClick={() => setSidebarOpen(false)} style={{ position:"fixed", inset:0, background:"#0008", zIndex:20 }} />}
 
       {/* ── SIDEBAR ── */}
-      <aside style={{ width: sidebarOpen ? (isMobileLayout ? Math.min(screenWidth * 0.86, 290) : 248) : 0, minWidth: sidebarOpen ? (isMobileLayout ? Math.min(screenWidth * 0.86, 290) : 248) : 0, maxWidth:"88vw", background:C.surface, borderRight:"1px solid "+C.border, display:"flex", flexDirection:"column", transition:"all .22s cubic-bezier(.4,0,.2,1)", overflow:"hidden", position:isMobileLayout ? "fixed" : "relative", left:0, top:0, bottom:0, height:"100dvh", zIndex:isMobileLayout ? 30 : 1, boxShadow:isMobileLayout && sidebarOpen ? "18px 0 60px #000c" : "none" }}>
-
-        {/* Logo + workspace identity */}
-        <div style={{ padding:"18px 16px 12px", borderBottom:"1px solid "+C.border }}>
+      <aside style={{ width: sidebarOpen ? (isMobileLayout ? Math.min(screenWidth * 0.86, 290) : 248) : 0, minWidth: sidebarOpen ? (isMobileLayout ? Math.min(screenWidth * 0.86, 290) : 248) : 0, maxWidth:"88vw", background:C.surface, borderRight:"1px solid "+C.border, display:"flex", flexDirection:"column", transition:"all .22s", overflow:"hidden", position:isMobileLayout ? "fixed" : "relative", left:0, top:0, bottom:0, height:"100dvh", zIndex:isMobileLayout ? 30 : 1, boxShadow:isMobileLayout && sidebarOpen ? "18px 0 60px #000c" : "none" }}>
+        {/* Logo + identity */}
+        <div style={{ padding:"18px 14px 12px", borderBottom:"1px solid "+C.border }}>
           <Logo size={safeSettings.appearance.logoSize || safeSettings.general.logoSize} />
           {safeSettings.appearance.workspaceCard !== false && (
-            <div style={{ marginTop:12, background:`linear-gradient(135deg, ${C.elevated}, ${C.bg})`, border:"1px solid "+C.border, borderRadius:12, padding:"10px 12px" }}>
-              <div style={{ color:C.gold, fontSize:9, letterSpacing:2.5, fontWeight:900, marginBottom:2 }}>AFTERGLOW / MOPAS WORKSPACE</div>
-              <div style={{ fontWeight:800, fontSize:14, color:C.cream, lineHeight:1.2 }}>{safeSettings.general.userName || "ISHIMWE Samuel"}</div>
-              <div style={{ fontSize:10, color:C.creamSoft, marginTop:3 }}>Discipline · Operations · Creative · Growth</div>
+            <div style={{ marginTop:10, background:C.elevated, border:"1px solid "+C.border, borderRadius:10, padding:"9px 11px" }}>
+              <div style={{ color:C.gold, fontSize:9, letterSpacing:2.5, fontWeight:900 }}>AFTERGLOW / MOPAS</div>
+              <div style={{ fontWeight:800, fontSize:13, color:C.cream, marginTop:2 }}>{safeSettings.general.userName || "ISHIMWE Samuel"}</div>
+              <div style={{ fontSize:10, color:C.creamSoft, marginTop:2 }}>Discipline · Operations · Creative · Growth</div>
             </div>
           )}
         </div>
 
-        {/* Scrollable nav body */}
-        <div style={{ flex:1, overflowY:"auto", padding:"10px 10px 4px" }}>
+        {/* Nav body */}
+        <div style={{ flex:1, overflowY:"auto", padding:"8px 8px 4px" }}>
 
-          {/* — Command — */}
-          <div style={{ fontSize:9, color:C.muted, letterSpacing:2.5, fontWeight:900, padding:"6px 6px 4px", textTransform:"uppercase" }}>Command</div>
+          {/* Command section */}
+          <div style={{ fontSize:9, color:C.muted, letterSpacing:2.5, fontWeight:900, padding:"6px 4px 3px" }}>COMMAND</div>
           {[
             { id:"dashboard", label:safeSettings.appearance.dashboardLabel || "Command Center", icon:safeSettings.appearance.dashboardIcon || "▦", color:C.orange },
-            { id:"boards", label:"Boards", icon:"▥", color:C.blue },
-            { id:"reports", label:"Reports", icon:"▧", color:C.green },
-            { id:"knowledge", label:"Knowledge", icon:"◫", color:C.creamSoft },
+            { id:"boards",    label:"Boards",       icon:"▥", color:C.blue },
+            { id:"reports",   label:"Reports",      icon:"▧", color:C.green },
+            { id:"knowledge", label:"Knowledge",    icon:"◫", color:C.creamSoft },
           ].map(item => {
             const active = view === item.id;
             return (
-              <div key={item.id} onClick={() => { setView(item.id); setSelected(null); if (isMobileLayout) setSidebarOpen(false); }}
-                style={{ padding:"9px 10px", borderRadius:8, cursor:"pointer", marginBottom:2, display:"flex", gap:9, alignItems:"center", background: active ? C.elevated : "transparent", borderLeft: active ? "3px solid "+item.color : "3px solid transparent", transition:"background .15s" }}>
-                <span style={{ fontSize:14, color: active ? item.color : C.muted, width:18, textAlign:"center", flexShrink:0 }}>{item.icon}</span>
-                <span style={{ flex:1, fontSize:13, fontWeight: active ? 800 : 500, color: active ? item.color : C.cream, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.label}</span>
+              <div key={item.id} onClick={() => { setView(item.id); setSelected(null); if (isMobileLayout) setSidebarOpen(false); }} style={{ padding:"8px 10px", borderRadius:8, cursor:"pointer", marginBottom:1, display:"flex", gap:8, alignItems:"center", background:active ? C.elevated : "transparent", borderLeft:"3px solid "+(active ? item.color : "transparent") }}>
+                <span style={{ fontSize:13, color:active ? item.color : C.muted, width:16, textAlign:"center", flexShrink:0 }}>{item.icon}</span>
+                <span style={{ flex:1, fontSize:12, fontWeight:active ? 800 : 500, color:active ? item.color : C.cream, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.label}</span>
               </div>
             );
           })}
 
-          {/* — Spaces — */}
-          <div style={{ fontSize:9, color:C.muted, letterSpacing:2.5, fontWeight:900, padding:"12px 6px 4px", textTransform:"uppercase" }}>Spaces</div>
+          {/* Spaces section */}
+          <div style={{ fontSize:9, color:C.muted, letterSpacing:2.5, fontWeight:900, padding:"10px 4px 3px" }}>SPACES</div>
           {SPACES.map(s => {
             const count = tasks.filter(t => t.space === s.id).length;
+            const late = tasks.filter(t => t.space === s.id && t.status !== "Done" && isDateKey(t.due) && t.due < localTodayISO()).length;
             const active = activeSpace === s.id && !isGlobalView;
-            const lateCount = tasks.filter(t => t.space === s.id && isLateTask(t)).length;
             return (
-              <div key={s.id} onClick={() => goSpace(s.id)} style={{ padding:"9px 10px", borderRadius:8, cursor:"pointer", marginBottom:2, display:"flex", alignItems:"center", gap:9, background: active ? C.elevated : "transparent", borderLeft: active ? "3px solid "+s.color : "3px solid transparent", transition:"background .15s" }}>
-                <span style={{ fontSize:13, color: active ? s.color : C.muted, width:18, textAlign:"center", flexShrink:0 }}>{s.icon}</span>
-                <span style={{ flex:1, fontSize:13, fontWeight: active ? 700 : 400, color: active ? s.color : C.cream, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.name}</span>
-                <div style={{ display:"flex", gap:4, alignItems:"center", flexShrink:0 }}>
-                  {lateCount > 0 && <span style={{ fontSize:10, color:C.red, background:C.red+"22", borderRadius:8, padding:"1px 5px", fontWeight:800 }}>{lateCount}</span>}
-                  {safeSettings.appearance.showTaskCounts !== false && <span style={{ fontSize:10, color:C.muted, background:C.bg, borderRadius:8, padding:"1px 6px" }}>{count}</span>}
+              <div key={s.id} onClick={() => goSpace(s.id)} style={{ padding:"8px 10px", borderRadius:8, cursor:"pointer", marginBottom:1, display:"flex", alignItems:"center", gap:8, background:active ? C.elevated : "transparent", borderLeft:"3px solid "+(active ? s.color : "transparent") }}>
+                <span style={{ fontSize:13, color:active ? s.color : C.muted, width:16, textAlign:"center", flexShrink:0 }}>{s.icon}</span>
+                <span style={{ flex:1, fontSize:12, fontWeight:active ? 700 : 400, color:active ? s.color : C.cream, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.name}</span>
+                <div style={{ display:"flex", gap:3, alignItems:"center", flexShrink:0 }}>
+                  {late > 0 && <span style={{ fontSize:9, color:C.red, background:C.red+"22", borderRadius:6, padding:"1px 4px", fontWeight:900 }}>{late}</span>}
+                  {safeSettings.appearance.showTaskCounts !== false && <span style={{ fontSize:9, color:C.muted, background:C.bg, borderRadius:6, padding:"1px 5px" }}>{count}</span>}
                 </div>
               </div>
             );
           })}
 
-          {/* — Tools — */}
-          <div style={{ fontSize:9, color:C.muted, letterSpacing:2.5, fontWeight:900, padding:"12px 6px 4px", textTransform:"uppercase" }}>Tools</div>
+          {/* Tools section */}
+          <div style={{ fontSize:9, color:C.muted, letterSpacing:2.5, fontWeight:900, padding:"10px 4px 3px" }}>TOOLS</div>
           {[
-            { id:"database", label:"Data Hub", icon:"▤", color:C.gold },
-            { id:"automations", label:"Automations", icon:"⚙", color:C.purple },
-            { id:"roadmap", label:"Roadmap", icon:"⇢", color:C.gold },
-            { id:"life os", label:"Life OS Lab", icon:"◎", color:C.orange },
+            { id:"database",   label:"Data Hub",     icon:"▤", color:C.gold },
+            { id:"automations",label:"Automations",  icon:"⚙", color:C.purple },
+            { id:"roadmap",    label:"Roadmap",      icon:"⇢", color:C.gold },
+            { id:"life os",    label:"Life OS Lab",  icon:"◎", color:C.orange },
           ].map(item => {
             const active = view === item.id;
             return (
-              <div key={item.id} onClick={() => { setView(item.id); setSelected(null); if (isMobileLayout) setSidebarOpen(false); }}
-                style={{ padding:"9px 10px", borderRadius:8, cursor:"pointer", marginBottom:2, display:"flex", gap:9, alignItems:"center", background: active ? C.elevated : "transparent", borderLeft: active ? "3px solid "+item.color : "3px solid transparent", transition:"background .15s" }}>
-                <span style={{ fontSize:14, color: active ? item.color : C.muted, width:18, textAlign:"center", flexShrink:0 }}>{item.icon}</span>
-                <span style={{ flex:1, fontSize:13, fontWeight: active ? 800 : 500, color: active ? item.color : C.cream, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.label}</span>
+              <div key={item.id} onClick={() => { setView(item.id); setSelected(null); if (isMobileLayout) setSidebarOpen(false); }} style={{ padding:"8px 10px", borderRadius:8, cursor:"pointer", marginBottom:1, display:"flex", gap:8, alignItems:"center", background:active ? C.elevated : "transparent", borderLeft:"3px solid "+(active ? item.color : "transparent") }}>
+                <span style={{ fontSize:13, color:active ? item.color : C.muted, width:16, textAlign:"center", flexShrink:0 }}>{item.icon}</span>
+                <span style={{ flex:1, fontSize:12, fontWeight:active ? 800 : 500, color:active ? item.color : C.cream, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{item.label}</span>
               </div>
             );
           })}
-
           <div style={{ height:16 }} />
         </div>
 
-        {/* Bottom: sync + settings + logout */}
-        <div style={{ padding:"10px 12px 14px", borderTop:"1px solid "+C.border, display:"grid", gap:8 }}>
+        {/* Bottom: sync + settings */}
+        <div style={{ padding:"10px 10px 12px", borderTop:"1px solid "+C.border, display:"grid", gap:8 }}>
           <CloudSyncPanel auth={auth} backendNotice={backendNotice} backendBusy={backendBusy} onLogin={handleBackendLogin} onRegister={handleBackendRegister} onLogout={handleBackendLogout} onRefresh={refreshCloudTasks} onUploadLocal={uploadLocalTasksToCloud} placement="top" compact />
           <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:6, alignItems:"center" }}>
-            <span style={{ color:C.muted, fontSize:10, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>AFTERGLOW © 2026</span>
+            <span style={{ color:C.muted, fontSize:9, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>AFTERGLOW © 2026</span>
             <button title="Settings" onClick={() => { setView("settings"); setSelected(null); if (isMobileLayout) setSidebarOpen(false); }} style={{ width:32, height:32, borderRadius:8, border:"1px solid "+(view === "settings" ? C.orange : C.border), background:view === "settings" ? C.elevated : C.bg, color:view === "settings" ? C.orange : C.creamSoft, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>⚙</button>
-            <button title="Logout" onClick={handleBackendLogout} style={{ height:32, padding:"0 9px", borderRadius:8, border:"1px solid "+C.red+"66", background:"transparent", color:C.red, cursor:"pointer", fontSize:11, fontWeight:800 }}>Out</button>
+            <button title="Logout" onClick={handleBackendLogout} style={{ height:32, padding:"0 8px", borderRadius:8, border:"1px solid "+C.red+"55", background:"transparent", color:C.red, cursor:"pointer", fontSize:11, fontWeight:800 }}>Out</button>
           </div>
         </div>
       </aside>
 
-      {/* ── MAIN CONTENT ── */}
+      {/* ── MAIN ── */}
       <main style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0, paddingBottom: isPhoneLayout ? 56 : 0 }}>
-
-        {/* Header */}
-        <header style={{ padding:isPhoneLayout ? "10px 12px" : "12px 20px", borderBottom:"1px solid "+C.border, display:"flex", justifyContent:"space-between", alignItems:"center", background:C.surface, gap:10, flexShrink:0 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:9, minWidth:0 }}>
-            {!isPhoneLayout && <span onClick={() => setSidebarOpen(o => !o)} style={{ cursor:"pointer", fontSize:18, color:C.creamSoft, flexShrink:0, userSelect:"none" }}>☰</span>}
+        <header style={{ padding:isPhoneLayout ? "9px 12px" : "12px 20px", borderBottom:"1px solid "+C.border, display:"flex", justifyContent:"space-between", alignItems:"center", background:C.surface, gap:8, flexShrink:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, minWidth:0 }}>
+            <span onClick={() => setSidebarOpen(o => !o)} style={{ cursor:"pointer", fontSize:18, color:C.creamSoft, flexShrink:0 }}>☰</span>
             <div style={{ minWidth:0 }}>
-              <div style={{ fontWeight:800, fontSize:isPhoneLayout ? 14 : 16, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", color:C.cream }}>{viewTitle}</div>
-              {!isPhoneLayout && !isGlobalView && <div style={{ color:C.muted, fontSize:11, marginTop:1 }}>{sp.description || ""}</div>}
+              <div style={{ fontWeight:800, fontSize:isPhoneLayout ? 13 : 15, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{viewTitle}</div>
+              {!isPhoneLayout && !isGlobalView && <div style={{ color:C.muted, fontSize:10, marginTop:1 }}>{sp.description || ""}</div>}
             </div>
           </div>
           <div style={{ display:"flex", gap:6, alignItems:"center", flexShrink:0 }}>
             {!isGlobalView && !isPhoneLayout && (
-              <div style={{ display:"flex", gap:4, background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:"3px 4px", overflowX:"auto", maxWidth: isMobileLayout ? 300 : "none" }}>
+              <div style={{ display:"flex", gap:3, background:C.bg, border:"1px solid "+C.border, borderRadius:9, padding:"3px 3px", overflowX:"auto" }}>
                 {VIEWS.map(v => (
-                  <span key={v} onClick={() => setView(v)} style={{ padding:"5px 11px", borderRadius:7, cursor:"pointer", fontSize:11, fontWeight: view === v ? 800 : 500, background: view === v ? C.elevated : "transparent", color: view === v ? C.orange : C.creamSoft, whiteSpace:"nowrap", flexShrink:0, transition:"all .15s" }}>
+                  <span key={v} onClick={() => setView(v)} style={{ padding:"5px 10px", borderRadius:6, cursor:"pointer", fontSize:11, fontWeight:view === v ? 800 : 500, background:view === v ? C.elevated : "transparent", color:view === v ? C.orange : C.creamSoft, whiteSpace:"nowrap", flexShrink:0 }}>
                     {v.split(" ").map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(" ")}
                   </span>
                 ))}
               </div>
             )}
             {isPhoneLayout && !isGlobalView && (
-              <select value={view} onChange={e => setView(e.target.value)} style={{ padding:"6px 8px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:12, maxWidth:120 }}>
+              <select value={view} onChange={e => setView(e.target.value)} style={{ padding:"5px 7px", borderRadius:7, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:11 }}>
                 {VIEWS.map(v => <option key={v} value={v}>{v.split(" ").map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(" ")}</option>)}
               </select>
             )}
-            {!isPhoneLayout && <Btn ghost onClick={() => sendTodayDisciplineEmail({ manual:true })}>📧 Email</Btn>}
-            {!isPhoneLayout && <Btn ghost onClick={exportBackup}>⬇ Backup</Btn>}
+            {!isPhoneLayout && <Btn ghost onClick={() => sendTodayDisciplineEmail({ manual:true })}>Email Action</Btn>}
+            {!isPhoneLayout && <Btn ghost onClick={exportBackup}>Backup</Btn>}
             {!isPhoneLayout && (
-              <label style={{ padding:"7px 13px", borderRadius:8, border:"1px solid "+C.border, cursor:"pointer", background:"transparent", color:C.cream, fontSize:12, fontWeight:600, whiteSpace:"nowrap" }}>
-                ⬆ Import<input type="file" accept="application/json,.json" onChange={importBackup} style={{ display:"none" }} />
+              <label style={{ padding:"7px 12px", borderRadius:8, border:"1px solid "+C.border, cursor:"pointer", background:"transparent", color:C.cream, fontSize:12, fontWeight:600, whiteSpace:"nowrap" }}>
+                Import<input type="file" accept="application/json,.json" onChange={importBackup} style={{ display:"none" }} />
               </label>
             )}
-            <Btn orange onClick={() => setShowNewTask(true)} style={{ whiteSpace:"nowrap" }}>{isPhoneLayout ? "+" : "+ New Task"}</Btn>
+            <Btn orange onClick={() => setShowNewTask(true)}>{isPhoneLayout ? "+" : "+ New Task"}</Btn>
           </div>
         </header>
 
-        {/* Search & filter bar */}
         {!isGlobalView && (
           <div style={{ padding:isPhoneLayout ? "8px 12px" : "10px 20px", borderBottom:"1px solid "+C.border, background:C.surface, display:"flex", flexWrap:"wrap", gap:8, alignItems:"center", flexShrink:0 }}>
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search tasks, tenders, notes..." style={{ flex:"1 1 160px", minWidth:120, padding:"7px 12px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, outline:"none", fontSize:13, boxSizing:"border-box" }} />
-            <select value={spaceFilter} onChange={e => setSpaceFilter(e.target.value)} style={{ padding:"7px 9px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:12 }}>
+            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search tasks, tenders, documents..." style={{ flex:"1 1 140px", minWidth:100, padding:"7px 11px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, outline:"none", fontSize:12, boxSizing:"border-box" }} />
+            <select value={spaceFilter} onChange={e => setSpaceFilter(e.target.value)} style={{ padding:"7px 8px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:12 }}>
               <option value="active">This space</option>
               <option value="all">All spaces</option>
             </select>
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding:"7px 9px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:12 }}>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding:"7px 8px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:12 }}>
               {["All", ...STATUSES].map(x => <option key={x} value={x}>{x}</option>)}
             </select>
-            <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)} style={{ padding:"7px 9px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:12 }}>
+            <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)} style={{ padding:"7px 8px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:12 }}>
               {["All", ...PRIORITIES].map(x => <option key={x} value={x}>{x}</option>)}
             </select>
-            <select value={deadlineFilter} onChange={e => setDeadlineFilter(e.target.value)} style={{ padding:"7px 9px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:12 }}>
+            <select value={deadlineFilter} onChange={e => setDeadlineFilter(e.target.value)} style={{ padding:"7px 8px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:12 }}>
               {["All","Overdue","Today","Tomorrow","This week","No deadline"].map(x => <option key={x} value={x}>{x}</option>)}
             </select>
           </div>
@@ -6039,20 +6001,20 @@ function AfterglowApp() {
         />
       )}
 
-      {/* ── MOBILE BOTTOM NAV ── */}
+      {/* ── PHONE BOTTOM NAV ── */}
       {isPhoneLayout && (
-        <nav style={{ position:"fixed", bottom:0, left:0, right:0, height:56, background:C.surface, borderTop:"1px solid "+C.border, display:"flex", alignItems:"center", zIndex:40, boxShadow:"0 -4px 24px #0006" }}>
-          {mobileBottomNav.map(item => {
-            const isActive = mobileBottomActiveId === item.id;
+        <nav style={{ position:"fixed", bottom:0, left:0, right:0, height:56, background:C.surface, borderTop:"1px solid "+C.border, display:"flex", alignItems:"stretch", zIndex:40, boxShadow:"0 -4px 20px #0006" }}>
+          {mobileNavItems.map(item => {
+            const active = mobileActiveId === item.id;
             return (
-              <button key={item.id} onClick={item.action} style={{ flex:1, height:"100%", border:"none", background:"transparent", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:3, color: item.accent ? "#fff" : isActive ? C.orange : C.muted, position:"relative" }}>
+              <button key={item.id} onClick={item.fn} style={{ flex:1, border:"none", background:"transparent", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, color:item.accent ? "#fff" : active ? C.orange : C.muted, position:"relative", padding:0 }}>
                 {item.accent ? (
-                  <div style={{ width:36, height:36, borderRadius:"50%", background:C.orange, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, fontWeight:900, color:"#fff", boxShadow:"0 4px 14px "+C.orange+"88", marginBottom:2 }}>{item.icon}</div>
+                  <div style={{ width:34, height:34, borderRadius:"50%", background:C.orange, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, fontWeight:900, boxShadow:"0 3px 12px "+C.orange+"88" }}>{item.icon}</div>
                 ) : (
                   <>
-                    <span style={{ fontSize:16 }}>{item.icon}</span>
-                    <span style={{ fontSize:9, fontWeight: isActive ? 800 : 500, letterSpacing:.5 }}>{item.label}</span>
-                    {isActive && <div style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", width:24, height:3, borderRadius:"3px 3px 0 0", background:C.orange }} />}
+                    <span style={{ fontSize:15, lineHeight:1 }}>{item.icon}</span>
+                    <span style={{ fontSize:9, fontWeight:active ? 800 : 400, lineHeight:1 }}>{item.label}</span>
+                    {active && <div style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", width:20, height:3, background:C.orange, borderRadius:"2px 2px 0 0" }} />}
                   </>
                 )}
               </button>
