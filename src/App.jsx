@@ -159,10 +159,13 @@ const FUTURE_GOALS_KEY = "afterglow_future_goals_v1";
 const ITSINDA_WEEKLY_AMOUNT = 20000;
 const TASK_CATEGORY_COLLAPSE_KEY = "afterglow_task_category_collapse_v1";
 const DEFAULT_APP_SETTINGS = {
-  general:{ userName:"ISHIMWE Samuel", roleTitle:"Operations Manager / 3D Animator", companyName:"MOPAS Ltd", workspaceName:"AFTERGLOW / MOPAS Workspace", defaultSpace:"wakeup", timezone:"Africa/Kigali", logoSize:"medium" },
+  general:{ userName:"ISHIMWE Samuel", roleTitle:"Operations Manager / 3D Animator", companyName:"MOPAS Ltd", workspaceName:"AFTERGLOW / MOPAS Workspace", appShortName:"AFTERGLOW", loginTitle:"Login first. Work from anywhere.", loginSubtitle:"Your command center for tasks, MOPAS operations, documents, money, routine, and creative growth.", supportNote:"Start with one task, one routine, and one saved record.", defaultSpace:"wakeup", timezone:"Africa/Kigali", logoSize:"medium" },
   routine:{ wakeupTime:"06:00", readingTarget:"20 pages", workoutTime:"06:50", eveningWorkoutTime:"18:30", drawingboxTime:"20:00", personalProjectTime:"21:00", afterglowBrandTime:"22:00", endDayReviewTime:"22:45", sleepTarget:"23:00", autoRoutineTasks:true },
   tasks:{ defaultPriority:"Normal", autoMoveUnfinished:"ask first", completedVisibility:"show", overdueBehavior:"move late down", weekStartDay:"Sunday", defaultReminderDays:1, showCompletedInFocus:false, doneDefaultMigrated:true },
   commandCenter:{
+    title:"Professional Command Center",
+    intro:"Calendar stays visible. Choose sections, arrange their order, and use Show More when you need the full control board.",
+    coachTitle:"Mental Coach / Do This Now",
     visibleCount:8,
     sectionOrder:DEFAULT_COMMAND_CENTER_ORDER,
     sections:DEFAULT_COMMAND_CENTER_VISIBILITY,
@@ -170,14 +173,15 @@ const DEFAULT_APP_SETTINGS = {
     density:"comfortable",
     showSectionNumbers:true,
     showStatusBar:true,
+    showQuickChips:true,
     defaultExpanded:false,
     professionalCalendarPinned:false,
   },
   mopas:{ tenderRootPath:TENDER_ROOT, defaultTenderStages:TENDER_STAGES.join(", "), defaultRequiredDocuments:"RDB certificate, RRA tax clearance, RSSB clearance, VAT certificate, beneficial ownership declaration, bid security / declaration of commitment", tenderDeadlineWarningDays:7, highValueTenderThreshold:10000000, tenderUrgencyOnDashboard:true },
   documents:{ categories:"Company, Tender, Staff, Contract, Finance", expiryWarningDays:30, showExpiredOnDashboard:true, autoHighlightExpired:true, defaultOwner:"MOPAS", googleDriveFolderId:DEFAULT_DRIVE_FOLDER_ID, googleAppsScriptUploadUrl:"" },
   backup:{ autoBackupReminder:"weekly" },
-  appearance:{ theme:"dark", accentColor:"orange", compactMode:false, cardDensity:"comfortable", sidebarBehavior:"auto", logoSize:"medium", fontSize:"normal", borderRadius:"rounded", panelSpacing:"normal", dashboardIcon:"▨", dashboardLabel:"Command Center", workspaceCard:true, showTaskCounts:true },
-  notifications:{ browserNotifications:false, emailNotifications:true, todayDisciplineEmail:true, todayDisciplineEmailTime:"05:45", emailMode:"Current action only", emailTone:"Direct", actionWindowMinutes:60, maxEmailTasks:1, includeTaskStartTimes:true, includeWhyInEmail:true, includeNextBlock:true, includeLateWarningInCurrentEmail:true, includeDocumentAlertInCurrentEmail:false, includeRoutineProgressInCurrentEmail:true, dailyMorningPlanEmail:true, overdueEmail:true, documentExpiryEmail:true, endDayReviewEmail:true, dailyRoutineReminder:true, deadlineReminder:true, tenderDeadlineReminder:true, whatsappNumber:"+250784623361", emailAddress:"ishimwesamuel3d@gmail.com", method:"Email", googleAppsScriptEmailUrl:"" },
+  appearance:{ theme:"dark", accentColor:"orange", compactMode:false, cardDensity:"comfortable", sidebarBehavior:"auto", logoSize:"medium", fontSize:"normal", borderRadius:"rounded", panelSpacing:"normal", dashboardIcon:"▨", dashboardLabel:"Command Center", workspaceCard:true, showTaskCounts:true, showHeaderSettingsButton:false },
+  notifications:{ browserNotifications:true, phoneReminders:true, reminderLeadMinutes:10, repeatReminderMinutes:20, vibrateOnReminder:true, reminderSound:false, quietHoursEnabled:false, quietHoursStart:"23:00", quietHoursEnd:"06:00", emailNotifications:true, todayDisciplineEmail:true, todayDisciplineEmailTime:"05:45", emailMode:"Current action only", emailTone:"Direct", actionWindowMinutes:60, maxEmailTasks:1, includeTaskStartTimes:true, includeWhyInEmail:true, includeNextBlock:true, includeLateWarningInCurrentEmail:true, includeDocumentAlertInCurrentEmail:false, includeRoutineProgressInCurrentEmail:true, dailyMorningPlanEmail:true, overdueEmail:true, documentExpiryEmail:true, endDayReviewEmail:true, dailyRoutineReminder:true, deadlineReminder:true, tenderDeadlineReminder:true, whatsappNumber:"+250784623361", emailAddress:"ishimwesamuel3d@gmail.com", method:"Phone Reminder", googleAppsScriptEmailUrl:"" },
 };
 const mergeAppSettings = (value = {}) => {
   const rawCommandCenter = value.commandCenter || {};
@@ -980,9 +984,10 @@ function NotificationCommandPanel({ settings, metrics, sendTodayDisciplineEmail,
       if (typeof Notification === "undefined") return setNotice("Browser notifications are not supported in this browser.");
       const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
       if (permission === "granted") {
-        new Notification("AFTERGLOW Current Action", { body: currentAction });
-        setNotice("Browser notification test sent.");
-      } else setNotice("Browser notification permission was not allowed.");
+        new Notification("AFTERGLOW Reminder", { body: currentAction });
+        if (settings?.notifications?.vibrateOnReminder !== false && navigator.vibrate) navigator.vibrate([180, 80, 180]);
+        setNotice("Phone/browser reminder test sent.");
+      } else setNotice("Phone/browser notification permission was not allowed.");
     } catch (error) { setNotice(String(error?.message || error)); }
   };
   const rules = [
@@ -998,11 +1003,11 @@ function NotificationCommandPanel({ settings, metrics, sendTodayDisciplineEmail,
         <div>
           <div style={{ color:C.purple, fontSize:11, letterSpacing:2, fontWeight:900 }}>NOTIFICATION ENGINE</div>
           <h2 style={{ margin:"4px 0", color:C.cream, fontSize:isPhoneLayout ? 20 : 24 }}>Less noise. More action.</h2>
-          <div style={{ color:C.creamSoft, fontSize:12 }}>Notifications focus on the current mission, routine recovery, tenders, documents, and money.</div>
+          <div style={{ color:C.creamSoft, fontSize:12 }}>Phone-style reminders focus on the current mission, routine recovery, tenders, documents, and money while the app is open.</div>
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           <Btn small orange onClick={() => sendTodayDisciplineEmail?.({ manual:true })}>Send action email</Btn>
-          <Btn small ghost onClick={askBrowser}>Test browser</Btn>
+          <Btn small ghost onClick={askBrowser}>Test phone reminder</Btn>
           <Btn small ghost onClick={() => setView("settings")}>Settings</Btn>
         </div>
       </div>
@@ -1692,7 +1697,7 @@ function AfterglowAutomationsV3({ tasks, settings, setView, generateTomorrowRout
     { title:"Daily routine generator", trigger:"Every new day", action:"Create wake-up, reading, MOPAS tender search, money, health, DrawingBox, 43 Project and End Day Review tasks.", button:"Generate tomorrow routines", run:generateTomorrowRoutineTasks, color:C.orange },
     { title:"Late task recovery", trigger:"Task due date is behind today", action:"Separate it into Recovery board and calculate priority using urgent/high formula.", button:"Open recovery board", run:() => setView("boards"), color:C.red },
     { title:"End day rollover", trigger:"End day review", action:"Move unfinished normal tasks to tomorrow without destroying your work history.", button:"Move unfinished", run:moveUnfinishedNormalTasksToTomorrow, color:C.blue },
-    { title:"Cloud sync", trigger:"After login or manual action", action:"Pull MongoDB tasks and merge them with local tasks safely.", button:"Sync from cloud", run:refreshCloudTasks, color:C.green },
+    { title:"Cloud sync", trigger:"After login or manual action", action:"Pull Supabase tasks and merge them with local tasks safely.", button:"Sync from cloud", run:refreshCloudTasks, color:C.green },
     { title:"Local to cloud upload", trigger:"Manual button", action:"Push local-only tasks to backend so the app becomes fully connected.", button:"Upload local tasks", run:uploadLocalTasksToCloud, color:C.gold },
     { title:"Current action email", trigger:"Manual or scheduled morning time", action:"Email one focused action based on time, active tasks, late tasks, and routines.", button:"Send email", run:() => sendTodayDisciplineEmail({ manual:true }), color:C.purple },
   ];
@@ -2377,11 +2382,13 @@ function NewTaskModal({ space, onSave, onClose }) {
   const folderOptionsForType = (type) => isMopas
     ? (type === "Tender Working On" ? [TENDER_WORKING_FOLDER] : [NORMAL_MOPAS_FOLDER, TENDER_SEARCH_FOLDER, "Follow-up", "Company Tasks"])
     : sp.folders;
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     ...emptyForm,
     mopasTaskType: isMopas ? defaultMopasType : "",
     folder: isMopas ? NORMAL_MOPAS_FOLDER : sp.folders[0],
     list: isMopas ? "Normal MOPAS Tasks" : "",
+    due: localTodayISO(),
   });
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
   const setMopasTaskType = (e) => {
@@ -2392,16 +2399,18 @@ function NewTaskModal({ space, onSave, onClose }) {
       folder:value === "Tender Working On" ? TENDER_WORKING_FOLDER : NORMAL_MOPAS_FOLDER,
       list:value === "Tender Working On" ? "Tender Working On" : "Normal MOPAS Tasks",
       priority:value === "Tender Working On" && f.priority === "Normal" ? "High" : f.priority,
+      goal:value === "Tender Working On" && !f.goal ? "Prepare this tender to submission standard." : f.goal,
     }));
   };
-  const submit = () => {
-    if (!form.title.trim()) return;
+  const buildTaskFromForm = () => {
     const raw = String(form.checklist || "");
     const clItems = raw.replace(/,/g, "\n").split("\n").map(s => s.trim()).filter(Boolean);
     const prefix = space.slice(0,3).toUpperCase();
     const mopasType = isMopas ? (form.mopasTaskType || "Normal Task") : "";
-    onSave({
-      id: prefix + "-" + String(Date.now()).slice(-6),
+    const taskId = prefix + "-" + String(Date.now()).slice(-6);
+    return {
+      id: taskId,
+      clientId: taskId,
       space,
       title: form.title.trim(),
       folder: form.folder || (mopasType === "Tender Working On" ? TENDER_WORKING_FOLDER : sp.folders[0]),
@@ -2422,23 +2431,37 @@ function NewTaskModal({ space, onSave, onClose }) {
         requestedDocuments:mopasType === "Tender Working On" ? "" : undefined,
         missingDocuments:mopasType === "Tender Working On" ? "" : undefined,
       } : {}),
-    });
+    };
+  };
+  const submit = async () => {
+    if (!form.title.trim() || saving) return;
+    setSaving(true);
+    try {
+      await onSave(buildTaskFromForm());
+    } finally {
+      setSaving(false);
+    }
   };
   const folderOptions = folderOptionsForType(form.mopasTaskType);
   return (
-    <div style={{ position:"fixed", inset:0, background:"#000a", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:16, padding:28, width:500, maxWidth:"95vw", maxHeight:"90vh", overflowY:"auto", border:"1px solid "+C.border }}>
-        <h3 style={{ color:C.gold, marginTop:0, letterSpacing:2, fontSize:13 }}>{"NEW TASK — " + sp.name}</h3>
+    <div style={{ position:"fixed", inset:0, background:"#000a", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:12 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background:C.surface, borderRadius:16, padding:24, width:520, maxWidth:"95vw", maxHeight:"90vh", overflowY:"auto", border:"1px solid "+C.border, boxShadow:"0 24px 80px #0009" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"flex-start", marginBottom:12 }}>
+          <div>
+            <div style={{ color:C.gold, letterSpacing:2, fontSize:11, fontWeight:900 }}>NEW TASK</div>
+            <h3 style={{ color:C.cream, margin:"4px 0 0", fontSize:20 }}>{sp.name}</h3>
+          </div>
+          <button onClick={onClose} style={{ border:"1px solid "+C.border, background:C.bg, color:C.creamSoft, borderRadius:10, width:34, height:34, cursor:"pointer" }}>×</button>
+        </div>
         {isMopas && (
           <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:12, padding:12, marginBottom:12 }}>
             <Select label="MOPAS TASK TYPE" options={MOPAS_TASK_TYPES} value={form.mopasTaskType} onChange={setMopasTaskType} />
             <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5 }}>
-              <strong style={{ color:C.gold }}>Tender Working On</strong> = a real tender you are preparing, for example: Tender for production of Multimedia contents to Rwamagana District.<br />
-              <strong style={{ color:C.blue }}>Normal Task</strong> = daily work like search and log new tenders, calls, documents, reports, or follow-ups.
+              <strong style={{ color:C.gold }}>Tender Working On</strong> is for active tender preparation. <strong style={{ color:C.blue }}>Normal Task</strong> is for follow-up, reports, calls, or tender search logs.
             </div>
           </div>
         )}
-        <Input label="TITLE" placeholder={isMopas && form.mopasTaskType === "Tender Working On" ? "Tender for production of Multimedia contents to Rwamagana District" : "Task name..."} value={form.title} onChange={set("title")} />
+        <Input label="TITLE" placeholder={isMopas && form.mopasTaskType === "Tender Working On" ? "Tender for multimedia contents..." : "Task name..."} value={form.title} onChange={set("title")} onKeyDown={e => { if (e.key === "Enter") submit(); }} />
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
           <Select label="FOLDER" options={folderOptions} value={form.folder} onChange={set("folder")} />
           <Input label="LIST" placeholder="e.g. Daily" value={form.list} onChange={set("list")} />
@@ -2454,9 +2477,12 @@ function NewTaskModal({ space, onSave, onClose }) {
         <Input label="GOAL" placeholder="What does completing this achieve?" value={form.goal} onChange={set("goal")} />
         <Textarea label="DETAILS" placeholder="Add context..." value={form.details} onChange={set("details")} />
         <Textarea label="CHECKLIST (one per line or comma-separated)" placeholder={"Step 1\nStep 2\nStep 3"} value={form.checklist} onChange={set("checklist")} />
-        <div style={{ display:"flex", gap:10, marginTop:8, justifyContent:"flex-end" }}>
-          <Btn ghost onClick={onClose}>Cancel</Btn>
-          <Btn orange onClick={submit} disabled={!form.title.trim()}>Create Task</Btn>
+        <div style={{ display:"flex", gap:10, marginTop:8, justifyContent:"space-between", alignItems:"center", flexWrap:"wrap" }}>
+          <div style={{ color:C.muted, fontSize:11 }}>Saved locally first, then synced to Supabase.</div>
+          <div style={{ display:"flex", gap:10 }}>
+            <Btn ghost onClick={onClose}>Cancel</Btn>
+            <Btn orange onClick={submit} disabled={!form.title.trim() || saving}>{saving ? "Creating..." : "Create Task"}</Btn>
+          </div>
         </div>
       </div>
     </div>
@@ -3409,7 +3435,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
     <div style={{ ...PNL, padding:24, background:`linear-gradient(135deg, ${C.elevated}, ${C.surface})`, borderLeft:"5px solid "+coach.color, boxShadow:"0 18px 50px #0005" }}>
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:16, alignItems:"center" }}>
         <div style={{ minWidth:0 }}>
-          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:6 }}>MENTAL COACH / DO THIS NOW</div>
+          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:6 }}>{mergedSettings.commandCenter.coachTitle || "MENTAL COACH / DO THIS NOW"}</div>
           <div style={{ color:C.cream, fontSize:24, fontWeight:900, lineHeight:1.15, marginBottom:8 }}>{coach.title}</div>
           <div style={{ color:C.creamSoft, fontSize:13, lineHeight:1.55, marginBottom:10 }}>{coach.why}</div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
@@ -3435,9 +3461,9 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
       <div style={{ ...PNL, minWidth:0, borderLeft:"5px solid "+C.orange, padding:22, background:`linear-gradient(135deg, ${C.surface}, ${C.elevated})`, boxShadow:"0 16px 45px #0004" }}>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:14, alignItems:"start" }}>
           <div style={{ minWidth:0 }}>
-            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:5 }}>PROFESSIONAL COMMAND CENTER</div>
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, marginBottom:5 }}>{String(mergedSettings.commandCenter.title || "PROFESSIONAL COMMAND CENTER").toUpperCase()}</div>
             <h2 style={{ margin:"0 0 6px", color:C.cream, fontSize:24, lineHeight:1.15 }}>{mergedSettings.appearance.dashboardLabel || "Command Center"}</h2>
-            <div style={{ color:C.creamSoft, fontSize:13, lineHeight:1.5 }}>Calendar is preserved. Financial Health now lives inside Money & Savings. Choose sections in Settings, arrange their order, and use Show More when you need the full control board.</div>
+            <div style={{ color:C.creamSoft, fontSize:13, lineHeight:1.5 }}>{mergedSettings.commandCenter.intro || "Calendar is preserved. Choose sections in Settings, arrange their order, and use Show More when you need the full control board."}</div>
           </div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"flex-end" }}>
             <Btn small ghost onClick={openCalendar}>Open Calendar</Btn>
@@ -3460,7 +3486,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
             ))}
           </div>
         )}
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
+        {commandCenterSettings.showQuickChips !== false && <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
           {commandVisibleOrder.map((key, index) => {
             const active = commandShownKeys.includes(key);
             return (
@@ -3469,7 +3495,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
               </span>
             );
           })}
-        </div>
+        </div>}
       </div>
     );
   };
@@ -4908,8 +4934,29 @@ function GoalsView({ activeSpace }) {
 function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup, resetSettingsOnly, clearTestData, sendTodayDisciplineEmail, emailNotice }) {
   const tabs = ["General", "Daily Routine", "Tasks & Deadlines", "Command Center", "MOPAS Tender", "Documents", "Backup & Data", "Appearance", "Notifications"];
   const [tab, setTab] = useState("General");
+  const [phoneNotice, setPhoneNotice] = useState("");
   const merged = mergeAppSettings(settings);
   const update = (section, key, value) => setSettings(prev => mergeAppSettings({ ...prev, [section]:{ ...(prev?.[section] || {}), [key]:value } }));
+  const enablePhoneReminders = async () => {
+    try {
+      if (typeof Notification === "undefined") {
+        setPhoneNotice("This browser does not support notifications.");
+        return;
+      }
+      const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+      update("notifications", "browserNotifications", permission === "granted");
+      update("notifications", "phoneReminders", permission === "granted");
+      if (permission === "granted") {
+        new Notification("AFTERGLOW reminders enabled", { body:"You will receive task reminders while the app is open." });
+        if (navigator.vibrate) navigator.vibrate([160, 70, 160]);
+        setPhoneNotice("Phone reminders enabled. Keep AFTERGLOW open or installed as an app for best results.");
+      } else {
+        setPhoneNotice("Notification permission was not allowed. Enable it in your browser or phone settings.");
+      }
+    } catch (error) {
+      setPhoneNotice(String(error?.message || error));
+    }
+  };
   const updateCommandSection = (key, value) => setSettings(prev => {
     const current = mergeAppSettings(prev || {});
     return mergeAppSettings({
@@ -4991,11 +5038,19 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
       </div>
 
       {tab === "General" && <SettingCard title="GENERAL" note="Main identity and default workspace behavior.">
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+C.green, borderRadius:12, padding:12, marginBottom:12 }}>
+          <div style={{ color:C.green, fontSize:10, letterSpacing:2, fontWeight:900 }}>READY TO USE</div>
+          <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.55, marginTop:5 }}>Create tasks from the header, manage backup/import in Backup & Data, and test emails in Notifications. The main workspace header now stays focused for daily use.</div>
+        </div>
         <FieldGrid>
           <Input label="USER NAME" value={merged.general.userName} onChange={e => update("general", "userName", e.target.value)} />
           <Input label="ROLE / TITLE" value={merged.general.roleTitle} onChange={e => update("general", "roleTitle", e.target.value)} />
           <Input label="COMPANY NAME" value={merged.general.companyName} onChange={e => update("general", "companyName", e.target.value)} />
           <Input label="WORKSPACE NAME" value={merged.general.workspaceName} onChange={e => update("general", "workspaceName", e.target.value)} />
+          <Input label="APP SHORT NAME" value={merged.general.appShortName || "AFTERGLOW"} onChange={e => update("general", "appShortName", e.target.value)} />
+          <Input label="LOGIN TITLE" value={merged.general.loginTitle || "Login first. Work from anywhere."} onChange={e => update("general", "loginTitle", e.target.value)} />
+          <Input label="LOGIN SUBTITLE" value={merged.general.loginSubtitle || ""} onChange={e => update("general", "loginSubtitle", e.target.value)} />
+          <Input label="SUPPORT / START NOTE" value={merged.general.supportNote || ""} onChange={e => update("general", "supportNote", e.target.value)} />
           <Select label="DEFAULT SPACE" options={SPACES.map(s => s.id)} value={merged.general.defaultSpace} onChange={e => update("general", "defaultSpace", e.target.value)} />
           <Input label="TIMEZONE" value={merged.general.timezone} onChange={e => update("general", "timezone", e.target.value)} />
         </FieldGrid>
@@ -5036,6 +5091,9 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
 
       {tab === "Command Center" && <SettingCard title="COMMAND CENTER" note="Build your own dashboard: keep Calendar visible, choose sections, arrange order, and control how much appears before Show More. Financial Health is managed inside Money & Savings.">
         <FieldGrid>
+          <Input label="COMMAND CENTER TOP LABEL" value={merged.commandCenter.title || "Professional Command Center"} onChange={e => update("commandCenter", "title", e.target.value)} />
+          <Input label="COMMAND CENTER INTRO" value={merged.commandCenter.intro || ""} onChange={e => update("commandCenter", "intro", e.target.value)} />
+          <Input label="COACH PANEL LABEL" value={merged.commandCenter.coachTitle || "Mental Coach / Do This Now"} onChange={e => update("commandCenter", "coachTitle", e.target.value)} />
           <Input label="SECTIONS BEFORE SHOW MORE" type="number" value={merged.commandCenter.visibleCount || 8} onChange={e => update("commandCenter", "visibleCount", Number(e.target.value || 1))} />
           <Select label="COMMAND CENTER LAYOUT" options={["compact", "balanced", "wide"]} value={merged.commandCenter.layout || "balanced"} onChange={e => update("commandCenter", "layout", e.target.value)} />
           <Select label="CARD DENSITY" options={["compact", "comfortable"]} value={merged.commandCenter.density || "comfortable"} onChange={e => update("commandCenter", "density", e.target.value)} />
@@ -5043,6 +5101,7 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(220px, 1fr))", gap:10, marginTop:8 }}>
           <Toggle label="Show section numbers" checked={merged.commandCenter.showSectionNumbers !== false} onChange={v => update("commandCenter", "showSectionNumbers", v)} />
           <Toggle label="Show Command Center status bar" checked={merged.commandCenter.showStatusBar !== false} onChange={v => update("commandCenter", "showStatusBar", v)} />
+          <Toggle label="Show section quick chips" checked={merged.commandCenter.showQuickChips !== false} onChange={v => update("commandCenter", "showQuickChips", v)} />
           <Toggle label="Start dashboard expanded" checked={merged.commandCenter.defaultExpanded === true} onChange={v => update("commandCenter", "defaultExpanded", v)} />
         </div>
         <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:14, margin:"12px 0", color:C.creamSoft, fontSize:12, lineHeight:1.55 }}>
@@ -5145,6 +5204,7 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
           <Toggle label="Compact mode" checked={merged.appearance.compactMode} onChange={v => update("appearance", "compactMode", v)} />
           <Toggle label="Show workspace profile card" checked={merged.appearance.workspaceCard !== false} onChange={v => update("appearance", "workspaceCard", v)} />
           <Toggle label="Show task counts in sidebar" checked={merged.appearance.showTaskCounts !== false} onChange={v => update("appearance", "showTaskCounts", v)} />
+          <Toggle label="Show Settings button in top header" checked={merged.appearance.showHeaderSettingsButton === true} onChange={v => update("appearance", "showHeaderSettingsButton", v)} />
         </div>
         <div style={{ marginTop:12, display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:10 }}>
           <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:C.radius || 12, padding:12 }}>
@@ -5160,53 +5220,64 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
         </div>
       </SettingCard>}
 
-      {tab === "Notifications" && <SettingCard title="NOTIFICATIONS & EMAIL" note="Control when you get notified, what the email contains, and how it is sent.">
+      {tab === "Notifications" && <SettingCard title="PHONE REMINDERS & EMAIL" note="Use phone/browser reminders for daily tasks. Email remains optional.">
         <div style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+C.orange, borderRadius:12, padding:14, marginBottom:16 }}>
-          <div style={{ color:C.orange, fontSize:10, letterSpacing:2, fontWeight:900, marginBottom:6 }}>HOW THE EMAIL WORKS</div>
+          <div style={{ color:C.orange, fontSize:10, letterSpacing:2, fontWeight:900, marginBottom:6 }}>PHONE REMINDER MODE</div>
           <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.65 }}>
-            Every morning (at your set time), AFTERGLOW sends one focused email with: the current action based on time of day, urgency line with start time and deadline, why it matters, up to 3 next steps from the task checklist, routine progress, late task warning, and MOPAS tender alert if urgent.
-            <br/><strong style={{ color:C.cream }}>Requirement:</strong> You must deploy a Google Apps Script as a Web App and paste the /exec URL below. Without it, email does not send but the app still works fully.
+            AFTERGLOW checks open tasks every minute and reminds you before the start time. This works best when the app is open or installed on your phone as a web app. Email is optional and can stay off.
           </div>
         </div>
         <FieldGrid>
+          <Select label="NOTIFICATION METHOD" options={["Phone Reminder", "Browser", "Email", "WhatsApp later"]} value={merged.notifications.method || "Phone Reminder"} onChange={e => update("notifications", "method", e.target.value)} />
+          <Input label="REMIND BEFORE TASK (minutes)" type="number" value={merged.notifications.reminderLeadMinutes || 10} onChange={e => update("notifications", "reminderLeadMinutes", Number(e.target.value || 10))} />
+          <Input label="REPEAT REMINDER AFTER (minutes)" type="number" value={merged.notifications.repeatReminderMinutes || 20} onChange={e => update("notifications", "repeatReminderMinutes", Number(e.target.value || 20))} />
+          <Input label="QUIET HOURS START" type="time" value={merged.notifications.quietHoursStart || "23:00"} onChange={e => update("notifications", "quietHoursStart", e.target.value)} />
+          <Input label="QUIET HOURS END" type="time" value={merged.notifications.quietHoursEnd || "06:00"} onChange={e => update("notifications", "quietHoursEnd", e.target.value)} />
           <Input label="YOUR EMAIL ADDRESS" value={merged.notifications.emailAddress} onChange={e => update("notifications", "emailAddress", e.target.value)} placeholder="ishimwesamuel3d@gmail.com" />
           <Input label="APPS SCRIPT URL (/exec)" value={merged.notifications.googleAppsScriptEmailUrl} onChange={e => update("notifications", "googleAppsScriptEmailUrl", e.target.value)} placeholder="https://script.google.com/macros/s/...../exec" />
-          <Input label="SEND TIME (daily)" type="time" value={merged.notifications.todayDisciplineEmailTime} onChange={e => update("notifications", "todayDisciplineEmailTime", e.target.value)} />
+          <Input label="SEND EMAIL TIME" type="time" value={merged.notifications.todayDisciplineEmailTime} onChange={e => update("notifications", "todayDisciplineEmailTime", e.target.value)} />
           <Select label="EMAIL TONE" options={["Direct", "Strict", "Motivational"]} value={merged.notifications.emailTone || "Direct"} onChange={e => update("notifications", "emailTone", e.target.value)} />
           <Select label="EMAIL MODE" options={["Current action only", "Morning plan", "Full report"]} value={merged.notifications.emailMode || "Current action only"} onChange={e => update("notifications", "emailMode", e.target.value)} />
-          <Input label="ACTION WINDOW (minutes)" type="number" value={merged.notifications.actionWindowMinutes || 60} onChange={e => update("notifications", "actionWindowMinutes", Number(e.target.value || 60))} />
           <Input label="EMAIL SUBJECT PREFIX" value={merged.notifications.emailSubjectPrefix || "AFTERGLOW"} onChange={e => update("notifications", "emailSubjectPrefix", e.target.value)} />
-          <Select label="NOTIFICATION METHOD" options={["Email", "Browser", "WhatsApp later"]} value={merged.notifications.method} onChange={e => update("notifications", "method", e.target.value)} />
         </FieldGrid>
-        <div style={{ color:C.gold, fontSize:10, letterSpacing:2, fontWeight:900, margin:"14px 0 8px" }}>WHAT THE EMAIL INCLUDES</div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", margin:"12px 0" }}>
+          <Btn orange onClick={enablePhoneReminders}>Enable phone reminders</Btn>
+          <Btn ghost onClick={() => { if (typeof Notification !== "undefined" && Notification.permission === "granted") { new Notification("AFTERGLOW test reminder", { body:"This is how task reminders will appear." }); if (navigator.vibrate) navigator.vibrate([160,70,160]); setPhoneNotice("Test reminder sent."); } else enablePhoneReminders(); }}>Test reminder</Btn>
+          <Btn ghost onClick={() => sendTodayDisciplineEmail && sendTodayDisciplineEmail({ manual:true })}>Send email test</Btn>
+        </div>
+        {phoneNotice && <div style={{ color:C.gold, fontSize:12, lineHeight:1.45, marginBottom:10 }}>{phoneNotice}</div>}
+        <div style={{ color:C.gold, fontSize:10, letterSpacing:2, fontWeight:900, margin:"14px 0 8px" }}>REMINDER OPTIONS</div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:7, marginBottom:12 }}>
           {[
+            { key:"phoneReminders", label:"Enable phone/browser task reminders" },
+            { key:"browserNotifications", label:"Allow browser notifications" },
+            { key:"vibrateOnReminder", label:"Vibrate phone when reminder appears" },
+            { key:"quietHoursEnabled", label:"Use quiet hours" },
             { key:"emailNotifications", label:"Enable email notifications" },
-            { key:"todayDisciplineEmail", label:"Auto-send daily at scheduled time" },
+            { key:"todayDisciplineEmail", label:"Auto-send daily email at scheduled time" },
             { key:"includeTaskStartTimes", label:"Show task start time in email" },
             { key:"includeWhyInEmail", label:"Include why this task matters" },
             { key:"includeNextBlock", label:"Show next time block coming up" },
-            { key:"includeRoutineProgressInCurrentEmail", label:"Include routine progress (e.g. 5/12)" },
+            { key:"includeRoutineProgressInCurrentEmail", label:"Include routine progress" },
             { key:"includeLateWarningInCurrentEmail", label:"Include late task warning" },
             { key:"includeDocumentAlertInCurrentEmail", label:"Include document expiry alert" },
           ].map(({ key, label }) => (
             <Toggle key={key} label={label} checked={merged.notifications[key] !== false && merged.notifications[key] !== undefined ? merged.notifications[key] : true} onChange={v => update("notifications", key, v)} />
           ))}
         </div>
-        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:12, marginBottom:10 }}>
-          <div style={{ color:C.gold, fontSize:10, letterSpacing:1.5, marginBottom:5 }}>ENDPOINT STATUS</div>
+        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:12, margin:"10px 0" }}>
+          <div style={{ color:C.gold, fontSize:10, letterSpacing:1.5, marginBottom:5 }}>EMAIL ENDPOINT STATUS</div>
           {(merged.notifications.googleAppsScriptEmailUrl || merged.documents.googleAppsScriptUploadUrl) ? (
-            <div style={{ color:C.green, fontSize:12, fontWeight:800 }}>✓ Apps Script URL configured — ready to send</div>
+            <div style={{ color:C.green, fontSize:12, fontWeight:800 }}>✓ Apps Script URL configured — email ready</div>
           ) : (
-            <div style={{ color:C.red, fontSize:12 }}>✗ No Apps Script URL. Email will not send until you add it above.</div>
+            <div style={{ color:C.muted, fontSize:12 }}>Email is optional. Phone reminders work without Apps Script.</div>
           )}
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-          <Btn orange onClick={() => sendTodayDisciplineEmail && sendTodayDisciplineEmail({ manual:true })}>Send email now (test)</Btn>
           <Btn ghost onClick={() => update("notifications", "googleAppsScriptEmailUrl", merged.documents.googleAppsScriptUploadUrl || "")}>Copy from Drive URL</Btn>
         </div>
         {emailNotice && <div style={{ marginTop:10, background:emailNotice.type==="success"?C.green+"18":emailNotice.type==="error"?C.red+"18":C.blue+"18", border:"1px solid "+(emailNotice.type==="success"?C.green:emailNotice.type==="error"?C.red:C.blue), borderRadius:10, padding:10, color:C.cream, fontSize:12, lineHeight:1.45 }}>{emailNotice.message}</div>}
-        <div style={{ color:C.muted, fontSize:11, marginTop:10, lineHeight:1.55 }}>Auto email sends once per day when the app is open past the scheduled time. For server-side scheduling (sends even when app is closed), set a time-based trigger inside your Apps Script editor.</div>
+        <div style={{ color:C.muted, fontSize:11, marginTop:10, lineHeight:1.55 }}>Phone reminders run while AFTERGLOW is open. For emails that send when the app is closed, use a Google Apps Script time-based trigger.</div>
       </SettingCard>}
     </div>
   );
@@ -5621,57 +5692,45 @@ function TenderFolderCreator() {
 }
 
 
-function AuthGate({ backendNotice, backendBusy, onLogin, onRegister }) {
+function AuthGate({ backendNotice, backendBusy, onLogin, onRegister, settings }) {
   const [mode, setMode] = useState("login");
-  const [form, setForm] = useState({ name:"Samu", email:"ishimwesamuel3d@gmail.com", password:"" });
+  const [form, setForm] = useState({ name:"ISHIMWE Samuel", email:"ishimwesamuel3d@gmail.com", password:"" });
+  const isRegister = mode === "register";
   const submit = () => {
     const payload = {
-      name: form.name.trim() || "Samu",
+      name: form.name.trim() || "ISHIMWE Samuel",
       email: form.email.trim(),
       password: form.password,
     };
-    if (!payload.email || !payload.password) return;
-    if (mode === "register") onRegister(payload);
+    if (!payload.email || !payload.password || backendBusy) return;
+    if (isRegister) onRegister(payload);
     else onLogin({ email:payload.email, password:payload.password });
   };
+  const merged = mergeAppSettings(settings || {});
+  const statusColorValue = backendNotice?.type === "error" ? C.red : backendNotice?.type === "success" ? C.green : C.blue;
   return (
-    <div style={{ minHeight:"100vh", background:`radial-gradient(circle at top left, ${C.orange}22, transparent 35%), ${C.bg}`, color:C.cream, display:"flex", alignItems:"center", justifyContent:"center", padding:20, fontFamily:"Segoe UI, Helvetica Neue, sans-serif" }}>
-      <div style={{ width:"100%", maxWidth:980, display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(280px, 1fr))", gap:20, alignItems:"stretch" }}>
-        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:22, padding:28, boxShadow:"0 26px 90px #0008", display:"flex", flexDirection:"column", justifyContent:"space-between", minHeight:360 }}>
-          <div>
-            <Logo size="large" />
-            <div style={{ color:C.gold, fontSize:11, letterSpacing:2.5, fontWeight:900, marginTop:20 }}>AFTERGLOW / MOPAS WORKSPACE</div>
-            <h1 style={{ margin:"10px 0 10px", fontSize:34, lineHeight:1.05 }}>Login first. Work from anywhere.</h1>
-            <p style={{ color:C.creamSoft, lineHeight:1.65, fontSize:14, maxWidth:460 }}>
-              Your tasks, MOPAS operations, money discipline, documents, and command center are protected behind your cloud account.
-              After login, AFTERGLOW connects to the backend and syncs from MongoDB automatically.
-            </p>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(110px, 1fr))", gap:10, marginTop:18 }}>
-            {["Cloud Sync", "MongoDB", "Daily OS"].map(item => (
-              <div key={item} style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12, color:C.creamSoft, fontSize:12, fontWeight:800 }}>{item}</div>
-            ))}
-          </div>
+    <div style={{ minHeight:"100vh", background:`radial-gradient(circle at top left, ${C.orange}1f, transparent 34%), ${C.bg}`, color:C.cream, display:"flex", alignItems:"center", justifyContent:"center", padding:18, fontFamily:"Segoe UI, Helvetica Neue, sans-serif" }}>
+      <div style={{ width:"100%", maxWidth:440, background:C.surface, border:"1px solid "+C.border, borderRadius:22, padding:24, boxShadow:"0 26px 90px #0008" }}>
+        <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}><Logo size="large" /></div>
+        <div style={{ textAlign:"center", marginBottom:20 }}>
+          <div style={{ color:C.gold, fontSize:10, letterSpacing:2.5, fontWeight:900 }}>{merged.general.appShortName || "AFTERGLOW"} WORKSPACE</div>
+          <h1 style={{ margin:"8px 0 6px", fontSize:28, lineHeight:1.05 }}>{merged.general.loginTitle || "Login first. Work from anywhere."}</h1>
+          <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5 }}>{merged.general.loginSubtitle || "Your command center is ready."}</div>
         </div>
-        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:22, padding:24, boxShadow:"0 26px 90px #0008" }}>
-          <div style={{ display:"flex", gap:8, marginBottom:18, background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:5 }}>
-            <button onClick={() => setMode("login")} style={{ flex:1, border:"none", borderRadius:10, padding:"10px 12px", background:mode === "login" ? C.orange : "transparent", color:mode === "login" ? "#fff" : C.creamSoft, fontWeight:900, cursor:"pointer" }}>Login</button>
-            <button onClick={() => setMode("register")} style={{ flex:1, border:"none", borderRadius:10, padding:"10px 12px", background:mode === "register" ? C.orange : "transparent", color:mode === "register" ? "#fff" : C.creamSoft, fontWeight:900, cursor:"pointer" }}>Register</button>
-          </div>
-          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900, marginBottom:10 }}>{mode === "register" ? "CREATE CLOUD ACCOUNT" : "SIGN IN TO CONTINUE"}</div>
-          {mode === "register" && <Input label="NAME" value={form.name} onChange={e => setForm(f => ({ ...f, name:e.target.value }))} />}
-          <Input label="EMAIL" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email:e.target.value }))} />
-          <Input label="PASSWORD" type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password:e.target.value }))} onKeyDown={e => { if (e.key === "Enter") submit(); }} placeholder="Enter your password" />
-          <Btn orange disabled={backendBusy || !form.email || !form.password} onClick={submit} style={{ width:"100%", padding:"12px 18px", marginTop:4 }}>{backendBusy ? "Connecting..." : mode === "register" ? "Create Account" : "Login"}</Btn>
-          {backendNotice && (
-            <div style={{ marginTop:14, background:backendNotice.type === "error" ? C.red+"18" : backendNotice.type === "success" ? C.green+"18" : C.blue+"18", border:"1px solid "+(backendNotice.type === "error" ? C.red : backendNotice.type === "success" ? C.green : C.blue), color:C.cream, borderRadius:12, padding:12, fontSize:12, lineHeight:1.45 }}>
-              {backendNotice.message}
-            </div>
-          )}
-          <div style={{ color:C.muted, fontSize:11, marginTop:14, lineHeight:1.5 }}>
-            API: {API_BASE_URL}<br />Local data stays as backup. Cloud data loads automatically after login.
-          </div>
+        <div style={{ display:"flex", gap:8, marginBottom:16, background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:5 }}>
+          <button onClick={() => setMode("login")} style={{ flex:1, border:"none", borderRadius:10, padding:"10px 12px", background:!isRegister ? C.orange : "transparent", color:!isRegister ? "#fff" : C.creamSoft, fontWeight:900, cursor:"pointer" }}>Login</button>
+          <button onClick={() => setMode("register")} style={{ flex:1, border:"none", borderRadius:10, padding:"10px 12px", background:isRegister ? C.orange : "transparent", color:isRegister ? "#fff" : C.creamSoft, fontWeight:900, cursor:"pointer" }}>Register</button>
         </div>
+        {isRegister && <Input label="NAME" value={form.name} onChange={e => setForm(f => ({ ...f, name:e.target.value }))} />}
+        <Input label="EMAIL" type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email:e.target.value }))} />
+        <Input label="PASSWORD" type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password:e.target.value }))} onKeyDown={e => { if (e.key === "Enter") submit(); }} placeholder="Enter your password" />
+        <Btn orange disabled={backendBusy || !form.email || !form.password} onClick={submit} style={{ width:"100%", padding:"12px 18px", marginTop:4 }}>{backendBusy ? "Connecting..." : isRegister ? "Create Account" : "Login"}</Btn>
+        {backendNotice && (
+          <div style={{ marginTop:14, background:statusColorValue+"18", border:"1px solid "+statusColorValue, color:C.cream, borderRadius:12, padding:12, fontSize:12, lineHeight:1.45 }}>
+            {backendNotice.message}
+          </div>
+        )}
+
       </div>
     </div>
   );
@@ -5692,8 +5751,8 @@ function CloudSyncPanel({ auth, backendNotice, backendBusy, onLogin, onRegister,
         <div style={{ position:"absolute", right:0, ...(placement === "top" ? { bottom:"calc(100% + 8px)" } : { top:"calc(100% + 8px)" }), width:360, maxWidth:"calc(100vw - 24px)", background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:14, zIndex:80, boxShadow:"0 20px 60px #0009" }}>
           <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", marginBottom:10 }}>
             <div>
-              <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:800 }}>BACKEND SYNC</div>
-              <div style={{ color:C.creamSoft, fontSize:12 }}>{API_BASE_URL}</div>
+              <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:800 }}>CLOUD SYNC</div>
+              <div style={{ color:C.creamSoft, fontSize:12 }}>{isConnected ? "Connected and ready" : "Login to sync across devices"}</div>
             </div>
             <Btn small ghost onClick={() => setOpen(false)}>Close</Btn>
           </div>
@@ -5727,7 +5786,7 @@ function CloudSyncPanel({ auth, backendNotice, backendBusy, onLogin, onRegister,
             </div>
           )}
           <div style={{ color:C.muted, fontSize:11, marginTop:10, lineHeight:1.4 }}>
-            Tip: keep backend running on port 5000. New tasks save to MongoDB when connected; localStorage stays as backup.
+            Tip: keep backend running on port 5000. New tasks save to Supabase when connected; localStorage stays as backup.
           </div>
         </div>
       )}
@@ -5862,7 +5921,7 @@ function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSe
     { label:"Tender movement", value:tenderTasks.length ? Math.min(100, tenderTasks.length * 18) : 45, note:`${tenderTasks.length} active tender tasks`, color:tenderTasks.length ? C.blue : C.gold },
   ];
   const automationRules = [
-    { title:"Login gate + cloud sync", trigger:"When app opens", action:"Ask login first, then sync MongoDB tasks automatically", status:"Active", color:C.green },
+    { title:"Login gate + cloud sync", trigger:"When app opens", action:"Ask login first, then sync Supabase tasks automatically", status:"Active", color:C.green },
     { title:"Daily routine engine", trigger:"Every new day", action:"Generate morning, MOPAS, money, health, drawing, brand, and end-day tasks", status:settings?.routine?.autoRoutineTasks ? "Active" : "Paused", color:settings?.routine?.autoRoutineTasks ? C.green : C.orange },
     { title:"Late task recovery", trigger:"Task deadline passed", action:"Push late work into recovery list and give it lower screen priority without hiding it", status:lateTasks.length ? "Needs action" : "Clean", color:lateTasks.length ? C.red : C.green },
     { title:"Document risk monitor", trigger:`${warningDays} days before expiry`, action:"Show company and tender document alerts inside command center", status:riskDocs.length ? "Needs action" : "Clean", color:riskDocs.length ? C.red : C.green },
@@ -6338,6 +6397,62 @@ function AfterglowApp() {
     return () => window.clearInterval(timer);
   }, [settings?.notifications?.emailNotifications, settings?.notifications?.todayDisciplineEmail, settings?.notifications?.todayDisciplineEmailTime, sendTodayDisciplineEmail]);
 
+  useEffect(() => {
+    if (!settings?.notifications?.phoneReminders && !settings?.notifications?.browserNotifications) return undefined;
+    const reminderStoreKey = "afterglow_phone_reminders_sent_v1";
+    const toMinutes = (time) => {
+      const [h, m] = String(time || "").split(":").map(Number);
+      if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+      return h * 60 + m;
+    };
+    const isQuiet = () => {
+      if (!settings?.notifications?.quietHoursEnabled) return false;
+      const start = toMinutes(settings?.notifications?.quietHoursStart || "23:00");
+      const end = toMinutes(settings?.notifications?.quietHoursEnd || "06:00");
+      const now = new Date();
+      const current = now.getHours() * 60 + now.getMinutes();
+      if (start === null || end === null) return false;
+      return start > end ? current >= start || current <= end : current >= start && current <= end;
+    };
+    const checkTaskReminders = () => {
+      try {
+        if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+        if (isQuiet()) return;
+        const todayKey = localTodayISO();
+        const now = new Date();
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+        const lead = Math.max(0, Number(settings?.notifications?.reminderLeadMinutes || 10));
+        const repeat = Math.max(5, Number(settings?.notifications?.repeatReminderMinutes || 20));
+        const sent = readStore(reminderStoreKey, {});
+        const candidates = sortTasksSmart(tasks.map(normalizeTask).filter(task =>
+          task.status !== "Done" &&
+          task.due === todayKey &&
+          task.time &&
+          toMinutes(task.time) !== null
+        ));
+        const task = candidates.find(item => {
+          const taskMinutes = toMinutes(item.time);
+          const delta = taskMinutes - nowMinutes;
+          return delta <= lead && delta >= -repeat;
+        });
+        if (!task) return;
+        const bucket = Math.floor(Date.now() / (repeat * 60000));
+        const key = `${task.id || task.clientId || task.title}-${todayKey}-${task.time}-${bucket}`;
+        if (sent[key]) return;
+        const title = `${settings?.general?.appShortName || "AFTERGLOW"} Reminder`;
+        const body = `${task.time} · ${task.title}${task.priority ? ` · ${task.priority}` : ""}`;
+        new Notification(title, { body, tag:key });
+        if (settings?.notifications?.vibrateOnReminder !== false && navigator.vibrate) navigator.vibrate([180, 80, 180]);
+        sent[key] = true;
+        writeStore(reminderStoreKey, sent);
+        setEmailNotice({ type:"info", message:`Reminder sent: ${task.title}` });
+      } catch {}
+    };
+    checkTaskReminders();
+    const timer = window.setInterval(checkTaskReminders, 60000);
+    return () => window.clearInterval(timer);
+  }, [tasks, settings?.notifications?.phoneReminders, settings?.notifications?.browserNotifications, settings?.notifications?.reminderLeadMinutes, settings?.notifications?.repeatReminderMinutes, settings?.notifications?.vibrateOnReminder, settings?.notifications?.quietHoursEnabled, settings?.notifications?.quietHoursStart, settings?.notifications?.quietHoursEnd, settings?.general?.appShortName]);
+
 
   const forceBackendLogout = useCallback((message = "Session expired. Please login again.") => {
     setStoredAuth("", null);
@@ -6352,7 +6467,7 @@ function AfterglowApp() {
       return;
     }
     setBackendBusy(true);
-    setBackendNotice({ type:"info", message:"Syncing tasks from MongoDB..." });
+    setBackendNotice({ type:"info", message:"Syncing tasks from Supabase..." });
     try {
       const result = await afterglowApiRequest("/api/tasks?limit=500");
       const cloudTasks = (result.data || []).map(taskFromApi);
@@ -6418,7 +6533,7 @@ function AfterglowApp() {
     setStoredAuth("", null);
     setAuth({ token:"", user:null });
     setAutoSyncDone(false);
-    setBackendNotice({ type:"info", message:"Logged out from backend. Local data remains available." });
+    setBackendNotice(null);
   }, []);
 
   const uploadLocalTasksToCloud = useCallback(async () => {
@@ -6432,7 +6547,7 @@ function AfterglowApp() {
       return;
     }
     setBackendBusy(true);
-    setBackendNotice({ type:"info", message:`Uploading ${localOnly.length} local task${localOnly.length === 1 ? "" : "s"} to MongoDB...` });
+    setBackendNotice({ type:"info", message:`Uploading ${localOnly.length} local task${localOnly.length === 1 ? "" : "s"} to Supabase...` });
     try {
       const uploaded = [];
       for (const task of localOnly) {
@@ -6440,7 +6555,7 @@ function AfterglowApp() {
         if (result.data) uploaded.push(taskFromApi(result.data));
       }
       setTasks(prev => mergeCloudTasks(prev, uploaded));
-      setBackendNotice({ type:"success", message:`Uploaded ${uploaded.length} task${uploaded.length === 1 ? "" : "s"} to MongoDB.` });
+      setBackendNotice({ type:"success", message:`Uploaded ${uploaded.length} task${uploaded.length === 1 ? "" : "s"} to Supabase.` });
     } catch (error) {
       setBackendNotice({ type:"error", message:String(error?.message || error) });
     } finally {
@@ -6470,23 +6585,47 @@ function AfterglowApp() {
   })), [tasks, activeSpace, query, spaceFilter, statusFilter, priorityFilter, deadlineFilter, deadlineMatches]);
 
   const createTask = useCallback(async (t) => {
-    const task = normalizeTask({ priority:settings?.tasks?.defaultPriority || "Normal", ...t });
-    const finalTask = task.status === "Done" && !task.completedAt ? { ...task, completedAt:new Date().toISOString(), locked:true } : task;
+    const localId = t.id || `TASK-${Date.now()}`;
+
+    const task = normalizeTask({
+      id:localId,
+      clientId:t.clientId || localId,
+      priority:settings?.tasks?.defaultPriority || "Normal",
+      ...t,
+    });
+
+    const finalTask = task.status === "Done" && !task.completedAt
+      ? { ...task, completedAt:new Date().toISOString(), locked:true }
+      : task;
+
+    // Save locally first so the user never loses the task if the cloud is offline.
     setTasks(prev => sortTasksSmart([finalTask, ...prev]));
     setSelected(finalTask);
     setView("list");
     setShowNewTask(false);
-    if (!getStoredAuthToken()) return;
+
+    if (!getStoredAuthToken()) {
+      setBackendNotice({ type:"error", message:"Task saved locally only. Please login again to save to Supabase." });
+      return;
+    }
+
     try {
-      const result = await afterglowApiRequest("/api/tasks", { method:"POST", body:JSON.stringify(taskPayloadForApi(finalTask)) });
+      const result = await afterglowApiRequest("/api/tasks", {
+        method:"POST",
+        body:JSON.stringify(taskPayloadForApi(finalTask)),
+      });
+
       if (result.data) {
         const cloudTask = taskFromApi(result.data);
-        setTasks(prev => sortTasksSmart(prev.map(item => item.id === finalTask.id ? cloudTask : item)));
+        setTasks(prev => sortTasksSmart(prev.map(item =>
+          item.id === finalTask.id || item.clientId === finalTask.clientId ? cloudTask : item
+        )));
         setSelected(cloudTask);
-        setBackendNotice({ type:"success", message:"Task saved to MongoDB." });
+        setBackendNotice({ type:"success", message:"Task saved to Supabase." });
       }
     } catch (error) {
-      setBackendNotice({ type:"error", message:`Task saved locally, but cloud save failed: ${String(error?.message || error)}` });
+      console.error("Create task frontend error:", error);
+      setBackendNotice({ type:"error", message:`Task saved locally, but Supabase save failed: ${String(error?.message || error)}` });
     }
   }, [settings?.tasks?.defaultPriority]);
   const updateTask = useCallback(async (u) => {
@@ -6528,7 +6667,7 @@ function AfterglowApp() {
     if (!getStoredAuthToken() || !cloudId) return;
     try {
       await afterglowApiRequest(`/api/tasks/${cloudId}`, { method:"DELETE" });
-      setBackendNotice({ type:"success", message:"Task deleted from MongoDB." });
+      setBackendNotice({ type:"success", message:"Task deleted from Supabase." });
     } catch (error) {
       setBackendNotice({ type:"error", message:`Deleted locally, but cloud delete failed: ${String(error?.message || error)}` });
     }
@@ -6620,6 +6759,7 @@ function AfterglowApp() {
         backendBusy={backendBusy}
         onLogin={handleBackendLogin}
         onRegister={handleBackendRegister}
+        settings={safeSettings}
       />
     );
   }
@@ -6745,13 +6885,7 @@ function AfterglowApp() {
                 {VIEWS.map(v => <option key={v} value={v}>{v.split(" ").map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(" ")}</option>)}
               </select>
             )}
-            {!isPhoneLayout && <Btn ghost onClick={() => sendTodayDisciplineEmail({ manual:true })}>Email Action</Btn>}
-            {!isPhoneLayout && <Btn ghost onClick={exportBackup}>Backup</Btn>}
-            {!isPhoneLayout && (
-              <label style={{ padding:"7px 12px", borderRadius:8, border:"1px solid "+C.border, cursor:"pointer", background:"transparent", color:C.cream, fontSize:12, fontWeight:600, whiteSpace:"nowrap" }}>
-                Import<input type="file" accept="application/json,.json" onChange={importBackup} style={{ display:"none" }} />
-              </label>
-            )}
+            {!isPhoneLayout && safeSettings.appearance.showHeaderSettingsButton === true && <Btn ghost onClick={() => setView("settings")}>Settings</Btn>}
             <Btn orange onClick={() => setShowNewTask(true)}>{isPhoneLayout ? "+" : "+ New Task"}</Btn>
           </div>
         </header>
@@ -6813,8 +6947,23 @@ function AfterglowApp() {
         </div>
       </main>
 
+      {/* New task modal */}
+      {showNewTask && (
+        <NewTaskModal
+          space={activeSpace}
+          onSave={createTask}
+          onClose={() => setShowNewTask(false)}
+        />
+      )}
+
       {/* Task detail modal — shown when a task is selected */}
-      {selected && <TaskDetail task={selected} onUpdate={updateTask} onDelete={() => setSelected(null)} />}
+      {selected && (
+        <TaskDetail
+          task={selected}
+          onUpdate={updateTask}
+          onDelete={() => setSelected(null)}
+        />
+      )}
 
       {/* ── PHONE BOTTOM NAV ── */}
       {isPhoneLayout && (
