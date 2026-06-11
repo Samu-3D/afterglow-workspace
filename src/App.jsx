@@ -2550,7 +2550,7 @@ function NewTaskModal({ space, onSave, onClose }) {
   );
 }
 
-function TaskDetail({ task, onUpdate, onDelete }) {
+function TaskDetail({ task, onUpdate, onDelete, onClose }) {
   const [newItem, setNewItem] = useState("");
   const [newComment, setNewComment] = useState("");
   const [titleDraft, setTitleDraft] = useState(task ? task.title : "");
@@ -2603,9 +2603,9 @@ function TaskDetail({ task, onUpdate, onDelete }) {
   const comments = task.comments || [];
 
   return (
-    <div onClick={() => onDelete && false /* backdrop tap does nothing, user must click X */}
+    <div onClick={() => { /* backdrop tap does nothing, user must click X */ }}
       style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.72)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:12 }}
-      onMouseDown={e => { if (e.target === e.currentTarget) onDelete && false; }}
+      onMouseDown={e => { if (e.target === e.currentTarget) {} }}
     >
     <div style={{
       width:"min(720px, 100%)", maxHeight:"92vh", overflowY:"auto",
@@ -2616,7 +2616,7 @@ function TaskDetail({ task, onUpdate, onDelete }) {
     }}>
       {/* Close button */}
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:6 }}>
-        <button onClick={() => onDelete && onDelete(null)} style={{ width:32, height:32, borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.creamSoft, cursor:"pointer", fontSize:18, lineHeight:1 }}>×</button>
+        <button onClick={() => onClose && onClose()} style={{ width:32, height:32, borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.creamSoft, cursor:"pointer", fontSize:18, lineHeight:1 }}>×</button>
       </div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
         <div style={{ minWidth:0, flex:1, marginRight:8 }}>
@@ -6815,16 +6815,43 @@ function AfterglowApp() {
     }
   }, []);
   const deleteTask = useCallback(async (id) => {
-    const target = tasks.find(t => t.id === id || getTaskCloudId(t) === id);
-    const cloudId = getTaskCloudId(target || { id });
-    setTasks(prev => prev.filter(t => t.id !== id && getTaskCloudId(t) !== id));
+    if (!id) return;
+
+    const target = tasks.find(t => t.id === id || getTaskCloudId(t) === id || t.clientId === id);
+    if (!target) {
+      setSelected(null);
+      setBackendNotice({ type:"error", message:"Task not found. Refresh tasks and try again." });
+      return;
+    }
+
+    const cloudId = getTaskCloudId(target);
+    const localId = target.id;
+    const clientId = target.clientId;
+
+    const confirmed = window.confirm(`Delete this task?
+
+${target.title || "Untitled task"}`);
+    if (!confirmed) return;
+
+    setTasks(prev => prev.filter(t =>
+      t.id !== localId &&
+      t.id !== id &&
+      t.clientId !== clientId &&
+      getTaskCloudId(t) !== cloudId &&
+      getTaskCloudId(t) !== id
+    ));
     setSelected(null);
-    if (!getStoredAuthToken() || !cloudId) return;
+
+    if (!getStoredAuthToken() || !cloudId) {
+      setBackendNotice({ type:"success", message:"Task deleted locally." });
+      return;
+    }
+
     try {
       await afterglowApiRequest(`/api/tasks/${cloudId}`, { method:"DELETE" });
       setBackendNotice({ type:"success", message:"Task deleted from Supabase." });
     } catch (error) {
-      setBackendNotice({ type:"error", message:`Deleted locally, but cloud delete failed: ${String(error?.message || error)}` });
+      setBackendNotice({ type:"error", message:`Task deleted locally, but cloud delete failed: ${String(error?.message || error)}` });
     }
   }, [tasks]);
   const goSpace = (id) => {
@@ -7123,7 +7150,8 @@ function AfterglowApp() {
         <TaskDetail
           task={selected}
           onUpdate={updateTask}
-          onDelete={() => setSelected(null)}
+          onDelete={deleteTask}
+          onClose={() => setSelected(null)}
         />
       )}
 
