@@ -47,6 +47,9 @@ const save = (t) => { try { window.localStorage.setItem(STORE_KEY, JSON.stringif
 
 
 const API_BASE_URL = ((typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL) || "http://localhost:5000").replace(/\/$/, "");
+const PWA_PUBLIC_VAPID_KEY = ((typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_VAPID_PUBLIC_KEY) || "").trim();
+const PWA_SERVICE_WORKER_PATH = "/sw.js";
+const PWA_ICON = "/Logo_AFTERGLOW1-05.png";
 const AUTH_TOKEN_KEY = "afterglow_auth_token_v1";
 const AUTH_USER_KEY = "afterglow_auth_user_v1";
 const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
@@ -122,6 +125,81 @@ async function afterglowApiRequest(path, options = {}) {
   }
   return data;
 }
+
+const urlBase64ToUint8Array = (base64String = "") => {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = `${base64String}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
+};
+
+const isAfterglowInstalled = () => {
+  try {
+    return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+  } catch { return false; }
+};
+
+const registerAfterglowServiceWorker = async () => {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return null;
+  try {
+    const registration = await navigator.serviceWorker.register(PWA_SERVICE_WORKER_PATH);
+    await navigator.serviceWorker.ready;
+    return registration;
+  } catch (error) {
+    console.warn("AFTERGLOW service worker registration failed", error);
+    return null;
+  }
+};
+
+const showAfterglowPhoneNotification = async (title, options = {}) => {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
+  const payload = {
+    icon:PWA_ICON,
+    badge:PWA_ICON,
+    tag:options.tag || "afterglow-reminder",
+    renotify:true,
+    requireInteraction:false,
+    data:{ url:"/", ...(options.data || {}) },
+    ...options,
+  };
+  try {
+    const registration = await registerAfterglowServiceWorker();
+    if (registration?.showNotification) {
+      await registration.showNotification(title, payload);
+      return true;
+    }
+  } catch (error) {
+    console.warn("Service worker notification fallback", error);
+  }
+  try {
+    new Notification(title, payload);
+    return true;
+  } catch { return false; }
+};
+
+const subscribeAfterglowPush = async () => {
+  if (!PWA_PUBLIC_VAPID_KEY) {
+    return { success:false, message:"Missing VITE_VAPID_PUBLIC_KEY. Local reminders still work while the app is open." };
+  }
+  if (!getStoredAuthToken()) {
+    return { success:false, message:"Login first before enabling cloud reminders." };
+  }
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return { success:false, message:"This browser does not support Web Push." };
+  }
+  const registration = await registerAfterglowServiceWorker();
+  if (!registration?.pushManager) return { success:false, message:"Push manager unavailable." };
+  const existing = await registration.pushManager.getSubscription();
+  const subscription = existing || await registration.pushManager.subscribe({
+    userVisibleOnly:true,
+    applicationServerKey:urlBase64ToUint8Array(PWA_PUBLIC_VAPID_KEY),
+  });
+  const result = await afterglowApiRequest("/api/push/subscribe", {
+    method:"POST",
+    body:JSON.stringify({ subscription:subscription.toJSON ? subscription.toJSON() : subscription, installed:isAfterglowInstalled() }),
+  });
+  return { success:true, ...(result || {}) };
+};
 const mergeCloudTasks = (localTasks = [], cloudTasks = []) => {
   const byKey = new Map();
   const put = (task) => {
@@ -4990,11 +5068,41 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
     try {
       if (typeof Notification === "undefined") return window.alert("This browser does not support notifications.");
       const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-      if (permission !== "granted") return window.alert("Notification permission was not allowed. Enable notifications in your browser settings.");
-      new Notification("AFTERGLOW reminder ready", { body:"Phone/browser reminders are enabled while the app is open." });
+      if (permission !== "granted") return window.alert("Notification permission was not allowed. Enable notifications in Safari/Chrome settings.");
+      await registerAfterglowServiceWorker();
+      let pushMessage = "Local phone reminders are ready.";
+      try {
+        const pushResult = await subscribeAfterglowPush();
+        if (pushResult?.success) pushMessage = "iPhone push reminders are connected.";
+        else if (pushResult?.message) pushMessage = pushResult.message;
+      } catch (pushError) {
+        pushMessage = `Cloud push not connected yet: ${String(pushError?.message || pushError)}`;
+      }
+      await showAfterglowPhoneNotification("AFTERGLOW reminder ready", { body:pushMessage, tag:"afterglow-reminder-ready" });
       try { if (merged.notifications.vibrateOnReminder && navigator.vibrate) navigator.vibrate([120, 60, 120]); } catch {}
       update("notifications", "browserNotifications", true);
       update("notifications", "phoneTaskReminders", true);
+      window.alert(pushMessage);
+    } catch (error) {
+      window.alert(String(error?.message || error));
+    }
+  };
+  const sendTestPushReminder = async () => {
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission !== "granted") {
+        await requestNotificationPermission();
+        return;
+      }
+      try {
+        await afterglowApiRequest("/api/push/test", {
+          method:"POST",
+          body:JSON.stringify({ title:"AFTERGLOW test reminder", body:"Your iPhone reminder system is ready." }),
+        });
+        window.alert("Test push sent. Check your iPhone/Home Screen app notification.");
+      } catch (apiError) {
+        await showAfterglowPhoneNotification("AFTERGLOW test reminder", { body:"Local reminder test is working.", tag:"afterglow-test-reminder" });
+        window.alert(`Local reminder shown. Cloud push test failed: ${String(apiError?.message || apiError)}`);
+      }
     } catch (error) {
       window.alert(String(error?.message || error));
     }
@@ -5251,10 +5359,12 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
         <div style={{ background:C.bg, border:"1px solid "+C.border, borderLeft:"4px solid "+C.green, borderRadius:12, padding:14, marginBottom:16 }}>
           <div style={{ color:C.green, fontSize:10, letterSpacing:2, fontWeight:900, marginBottom:6 }}>PHONE REMINDER MODE</div>
           <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.65 }}>
-            Phone reminders use browser notifications. They work when the app is open or installed and notification permission is allowed. For reminders when the app is fully closed, the next step is a PWA/service-worker upgrade.
+            iPhone reminders work best after installing AFTERGLOW from Safari using Add to Home Screen. This mode registers the service worker, connects Web Push when keys are configured, and keeps local reminders active while the app is open.
           </div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
-            <Btn orange onClick={requestNotificationPermission}>Enable / Test Phone Reminder</Btn>
+            <Btn orange onClick={requestNotificationPermission}>Enable iPhone Reminders</Btn>
+            <Btn ghost onClick={sendTestPushReminder}>Send Test Reminder</Btn>
+            <Badge color={isAfterglowInstalled() ? C.green : C.orange}>{isAfterglowInstalled() ? "installed" : "install on iPhone"}</Badge>
             <Badge color={typeof Notification !== "undefined" && Notification.permission === "granted" ? C.green : C.orange}>{typeof Notification !== "undefined" ? Notification.permission : "unsupported"}</Badge>
           </div>
         </div>
@@ -6334,6 +6444,11 @@ function AfterglowApp() {
   const [autoSyncDone, setAutoSyncDone] = useState(false);
   const [screenWidth, setScreenWidth] = useState(() => typeof window !== "undefined" ? window.innerWidth : 1366);
   const [sidebarOpen, setSidebarOpen] = useState(() => typeof window !== "undefined" ? window.innerWidth >= 900 : true);
+
+  useEffect(() => {
+    registerAfterglowServiceWorker();
+  }, []);
+
   const isCompactLayout = screenWidth < 1100;
   const isPhoneLayout = screenWidth <= 430;
   const isMobileLayout = screenWidth < 768;
@@ -6460,7 +6575,7 @@ function AfterglowApp() {
       if (scope === "Today only") return task.due === today || (task.isRoutine && task.routineDate === today);
       return task.due === today || isLateTask(task) || (task.isRoutine && task.routineDate === today);
     };
-    const runReminderCheck = () => {
+    const runReminderCheck = async () => {
       try {
         if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
         const now = new Date();
@@ -6470,21 +6585,22 @@ function AfterglowApp() {
         const before = Math.max(0, Number(settings?.notifications?.reminderMinutesBefore || 10));
         const repeat = Math.max(5, Number(settings?.notifications?.reminderRepeatMinutes || 30));
         const candidates = (Array.isArray(tasks) ? tasks : []).filter(shouldIncludeTask).filter(task => task.time || isLateTask(task));
-        candidates.slice(0, 6).forEach(task => {
+        for (const task of candidates.slice(0, 6)) {
           const startMinutes = task.time ? timeToMinutes(task.time) : nowMinutes;
           const diff = startMinutes - nowMinutes;
           const isDueWindow = isLateTask(task) || (diff <= before && diff >= -repeat);
-          if (!isDueWindow) return;
+          if (!isDueWindow) continue;
           const bucket = Math.floor(nowMinutes / repeat);
           const key = `afterglow_phone_reminder_${today}_${task.id}_${bucket}`;
-          if (window.localStorage.getItem(key)) return;
+          if (window.localStorage.getItem(key)) continue;
           window.localStorage.setItem(key, "1");
-          new Notification(task.title || "AFTERGLOW task reminder", {
+          await showAfterglowPhoneNotification(task.title || "AFTERGLOW task reminder", {
             body:`${task.time ? task.time + " · " : ""}${task.priority || "Normal"} · ${task.folder || getSpaceLabel(task.space)}`,
             tag:`afterglow-${task.id}`,
+            data:{ url:"/", taskId:task.id },
           });
           try { if (settings?.notifications?.vibrateOnReminder !== false && navigator.vibrate) navigator.vibrate([120, 70, 120]); } catch {}
-        });
+        }
       } catch {}
     };
     runReminderCheck();
