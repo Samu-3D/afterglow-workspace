@@ -72,10 +72,10 @@ const SPACES = [
   { id: "money", name: "Money & Savings", icon: "▨", color: C.gold, folders: ["Budget", "Investments", "Career Tools"], description: "Build freedom, not just survival." },
 ];
 
-const STATUSES = ["To Do", "In Progress", "Done", "Blocked"];
+const STATUSES = ["To Do", "In Progress", "Done", "Blocked", "Missed"];
 const PRIORITIES = ["Urgent", "High", "Normal", "Low"];
 const priorityColor = (p) => p === "Urgent" ? C.red : p === "High" ? C.orange : p === "Normal" ? C.blue : C.muted;
-const statusColor = (s) => s === "Done" ? C.green : s === "In Progress" ? C.orange : s === "Blocked" ? C.red : C.muted;
+const statusColor = (s) => s === "Done" ? C.green : s === "Missed" ? C.red : s === "In Progress" ? C.orange : s === "Blocked" ? C.red : C.muted;
 
 const COMMAND_CENTER_SECTIONS = [
   { key:"coach", label:"Mental Coach", group:"Focus" },
@@ -146,6 +146,7 @@ const taskPayloadForApi = (task = {}) => ({
   comments: normalizeCommentsForApi(task.comments),
   locked: task.locked === true,
   completedAt: task.completedAt || undefined,
+  missedAt: task.missedAt || undefined,
   isRoutine: task.isRoutine === true,
   routineKey: task.routineKey || "",
   routineDate: task.routineDate || "",
@@ -164,6 +165,7 @@ const taskFromApi = (item = {}) => normalizeTask({
   cloudId: item._id || item.id || item.cloudId || "",
   clientId: item.clientId || "",
   completedAt: item.completedAt ? String(item.completedAt) : "",
+  missedAt: item.missedAt ? String(item.missedAt) : "",
   checklist: normalizeChecklistForApi(item.checklist),
   comments: normalizeCommentsForApi(item.comments),
 });
@@ -401,7 +403,9 @@ const addDaysISO = (value, amount) => {
   return dateKey(next);
 };
 const isTaskDone = (task) => task && task.status === "Done";
-const isTaskOpen = (task) => task && task.status !== "Done";
+const isTaskMissed = (task) => task && task.status === "Missed";
+const isTaskClosed = (task) => isTaskDone(task) || isTaskMissed(task);
+const isTaskOpen = (task) => task && !isTaskClosed(task);
 
 const DAILY_ROUTINES = [
   {
@@ -717,6 +721,7 @@ const normalizeTask = (task = {}) => {
     due: "",
     time: "",
     completedAt: "",
+    missedAt: "",
     locked: false,
     ...task,
   };
@@ -732,7 +737,7 @@ const normalizeTask = (task = {}) => {
   }
   return base;
 };
-const isLateTask = (task) => task && task.status !== "Done" && isDateKey(task.due) && daysBetweenLocal(localTodayISO(), task.due) < 0;
+const isLateTask = (task) => isTaskOpen(task) && isDateKey(task.due) && daysBetweenLocal(localTodayISO(), task.due) < 0;
 const taskLateInfo = (task) => {
   if (!isLateTask(task)) return { isLate:false, days:0, label:"" };
   const days = Math.abs(daysBetweenLocal(localTodayISO(), task.due) || 0);
@@ -744,7 +749,8 @@ const compareTaskSmart = (aRaw, bRaw) => {
   const today = localTodayISO();
   const priorityRank = (task) => task.priority === "Urgent" ? 0 : task.priority === "High" ? 1 : task.priority === "Normal" ? 2 : 3;
   const groupRank = (task) => {
-    if (task.status === "Done") return 4;
+    if (task.status === "Done") return 5;
+    if (task.status === "Missed") return 4;
     if (isLateTask(task)) return 3; // late tasks stay visible but lower in the list
     if (task.status === "Blocked") return 2;
     return 0;
@@ -766,6 +772,10 @@ const compareTaskSmart = (aRaw, bRaw) => {
   if (groupRank(a) !== groupRank(b)) return groupRank(a) - groupRank(b);
   if (a.status === "Done" && b.status === "Done") {
     return String(b.completedAt || b.updatedAt || b.due || "").localeCompare(String(a.completedAt || a.updatedAt || a.due || ""))
+      || String(a.title || "").localeCompare(String(b.title || ""));
+  }
+  if (a.status === "Missed" && b.status === "Missed") {
+    return String(b.missedAt || b.updatedAt || b.due || "").localeCompare(String(a.missedAt || a.updatedAt || a.due || ""))
       || String(a.title || "").localeCompare(String(b.title || ""));
   }
   if (isLateTask(a) && isLateTask(b)) {
@@ -989,6 +999,7 @@ const getAfterglowMetrics = (tasks = [], settings = loadAppSettings()) => {
     const items = safeTasks.filter(t => t.space === space.id);
     const open = items.filter(isTaskOpen);
     const done = items.filter(isTaskDone);
+    const missed = items.filter(isTaskMissed);
     const late = open.filter(isLateTask);
     return { ...space, total:items.length, open:open.length, done:done.length, late:late.length, progress:percentValue(done.length, items.length) };
   });
@@ -1108,8 +1119,8 @@ function RoutineEngineCommandPanel({ tasks = [], onUpdate, setActiveSpace, setVi
             <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:10, padding:9 }}><b style={{ color:active.lateBy ? C.red : C.green }}>{active.lateBy ? "Recover" : "Next"}</b><div style={{ color:C.muted, fontSize:10 }}>Mode</div></div>
           </div>}
           {active && active.task && <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:12 }}>
-            {active.task.status !== "In Progress" && active.task.status !== "Done" && <Btn small ghost onClick={() => updateRoutine(active, "In Progress")}>Start</Btn>}
-            {active.task.status !== "Done" && <Btn small orange onClick={() => updateRoutine(active, "Done")}>Mark Done</Btn>}
+            {active.task.status !== "In Progress" && isTaskOpen(active.task) && <Btn small ghost onClick={() => updateRoutine(active, "In Progress")}>Start</Btn>}
+            {isTaskOpen(active.task) && <Btn small orange onClick={() => updateRoutine(active, "Done")}>Mark Done</Btn>}
             {active.task.status === "Done" && <Btn small ghost onClick={() => updateRoutine(active, "To Do")}>Reopen</Btn>}
             <Btn small ghost onClick={() => openRoutineTask(active)}>Open task</Btn>
           </div>}
@@ -1214,7 +1225,7 @@ function DashMiniCalendar({ tasks, setSelected, setActiveSpace, setView, setShow
           const dayTasks = tasksByDay[key] || [];
           const isToday = key === todayKey;
           const sel = key === calSel;
-          const hasLate = key < todayKey && dayTasks.some(t => t.status!=="Done");
+          const hasLate = key < todayKey && dayTasks.some(isTaskOpen);
           const dotColor = hasLate ? C.red : dayTasks.some(t=>t.status==="Done"&&dayTasks.every(t=>t.status==="Done")) ? C.green : dayTasks.length ? C.orange : null;
           return (
             <div key={key} onClick={() => setCalSel(key)} style={{ minHeight:32, borderRadius:8, border:"1px solid "+(sel?C.orange:isToday?C.gold:C.border), background:sel?C.elevated:isToday?C.gold+"18":C.bg, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, transition:"background .15s" }}>
@@ -1380,7 +1391,7 @@ function AfterglowCommandHubV3({ tasks, settings, goSpace, setView, setActiveSpa
           <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
             <Btn orange onClick={openNext}>{next ? "Open" : "Create Task"}</Btn>
             {next && next.status === "To Do" && <Btn ghost onClick={markStart}>Start</Btn>}
-            {next && next.status !== "Done" && <Btn ghost onClick={markDone}>Done ✓</Btn>}
+            {next && isTaskOpen(next) && <Btn ghost onClick={markDone}>Done ✓</Btn>}
             <Btn ghost onClick={() => setShowEndDayReview(true)}>End Day</Btn>
             <Btn ghost onClick={() => setShowNewTask(true)}>+ New</Btn>
           </div>
@@ -1465,8 +1476,8 @@ function AfterglowCommandHubV3({ tasks, settings, goSpace, setView, setActiveSpa
                   <div style={{ color:C.muted, fontSize:10, marginTop:1 }}>Tap Alerts tab to recover</div>
                 </div>
               )}
-              {metrics.todayTasks.filter(t => t.status !== "Done").slice(0, 4).map(task => <TaskLine key={task.id} task={task} />)}
-              {metrics.todayTasks.filter(t => t.status !== "Done").length === 0 && (
+              {metrics.todayTasks.filter(isTaskOpen).slice(0, 4).map(task => <TaskLine key={task.id} task={task} />)}
+              {metrics.todayTasks.filter(isTaskOpen).length === 0 && (
                 <div style={{ color:C.muted, fontSize:12, textAlign:"center", padding:16, border:"1px dashed "+C.border, borderRadius:10 }}>No open tasks today. Great work or add new tasks.</div>
               )}
             </div>
@@ -1753,7 +1764,7 @@ function AfterglowBoardsV3({ tasks, settings, setActiveSpace, setView, setSelect
       onUpdate({ ...task, status:next });
     }
   };
-  const totalOpen = metrics.tasks.filter(t => t.status !== "Done").length;
+  const totalOpen = metrics.tasks.filter(isTaskOpen).length;
   const totalDone = metrics.tasks.filter(t => t.status === "Done").length;
   return (
     <div style={{ display:"grid", gap:12, maxWidth:1480, margin:"0 auto" }}>
@@ -2312,7 +2323,7 @@ const buildTodayDisciplinePlanEmail = (tasks, settings) => {
     return "";
   };
   const spaceName = (id) => SPACES.find(s => s.id === id)?.name || id || "General";
-  const openTasks = safeTasks.filter(t => t.status !== "Done");
+  const openTasks = safeTasks.filter(isTaskOpen);
   const todayTasks = openTasks.filter(t => isDateKey(t.due) && t.due === todayKey);
   const lateTasks = openTasks.filter(isLateTask).sort(compareTaskSmart);
   const routineToday = safeTasks.filter(t => t.isRoutine && t.routineDate === todayKey);
@@ -2644,21 +2655,21 @@ function TaskDetail({ task, onUpdate, onDelete, onClose }) {
   useEffect(() => { setTitleDraft(task ? task.title : ""); }, [task?.id, task?.title]);
 
   const saveTitle = () => {
-    if (!task || task.status === "Done" || !titleDraft.trim()) return;
+    if (!task || isTaskClosed(task) || !titleDraft.trim()) return;
     onUpdate({ ...task, title: titleDraft.trim() });
   };
 
   if (!task) return null;   // no panel when nothing selected — modal only
 
   const addComment = () => {
-    if (task.status === "Done" || !newComment.trim()) return;
+    if (isTaskClosed(task) || !newComment.trim()) return;
     const c = { text: newComment.trim(), time: new Date().toLocaleString() };
     onUpdate({ ...task, comments: [...(task.comments || []), c] });
     setNewComment("");
   };
 
   const toggleCheck = (i) => {
-    if (task.status === "Done") return;
+    if (isTaskClosed(task)) return;
     const cl = [...task.checklist];
     if (typeof cl[i] === "object") cl[i] = { ...cl[i], done: !cl[i].done };
     else cl[i] = { text: cl[i], done: true };
@@ -2666,24 +2677,27 @@ function TaskDetail({ task, onUpdate, onDelete, onClose }) {
   };
 
   const removeCheck = (i) => {
-    if (task.status === "Done") return;
+    if (isTaskClosed(task)) return;
     onUpdate({ ...task, checklist: task.checklist.filter((_, idx) => idx !== i) });
   };
 
   const addCheck = () => {
-    if (task.status === "Done" || !newItem.trim()) return;
+    if (isTaskClosed(task) || !newItem.trim()) return;
     onUpdate({ ...task, checklist: [...task.checklist, newItem.trim()] });
     setNewItem("");
   };
 
   const cycleStatus = () => {
-    if (task.status === "Done") return;
+    if (isTaskClosed(task)) return;
     const i = STATUSES.indexOf(task.status);
     onUpdate({ ...task, status: STATUSES[(i + 1) % STATUSES.length] });
   };
 
   const isCompleted = task.status === "Done";
-  const reopenTask = () => onUpdate({ ...task, status:"To Do", locked:false, completedAt:"" });
+  const isMissed = task.status === "Missed";
+  const isClosed = isTaskClosed(task);
+  const markMissed = () => onUpdate({ ...task, status:"Missed", locked:true, missedAt:new Date().toISOString() });
+  const reopenTask = () => onUpdate({ ...task, status:"To Do", locked:false, completedAt:"", missedAt:"" });
   const items = task.checklist.map(c => typeof c === "object" ? c : { text: c, done: false });
   const done = items.filter(c => c.done).length;
   const comments = task.comments || [];
@@ -2697,8 +2711,8 @@ function TaskDetail({ task, onUpdate, onDelete, onClose }) {
       width:"min(720px, 100%)", maxHeight:"92vh", overflowY:"auto",
       background:C.surface, border:"1px solid "+C.border, borderRadius:18,
       boxShadow:"0 32px 80px rgba(0,0,0,.6)", padding:20,
-      opacity: isCompleted ? .9 : 1,
-      borderColor: isCompleted ? C.green : C.border,
+      opacity: isClosed ? .9 : 1,
+      borderColor: isCompleted ? C.green : isMissed ? C.red : C.border,
     }}>
       {/* Close button */}
       <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:6 }}>
@@ -2708,13 +2722,13 @@ function TaskDetail({ task, onUpdate, onDelete, onClose }) {
         <div style={{ minWidth:0, flex:1, marginRight:8 }}>
           <div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>{task.id}</div>
           <div style={{ display:"flex", gap:8, alignItems:"center", marginTop:4 }}>
-            <input disabled={isCompleted} value={titleDraft} onChange={e => setTitleDraft(e.target.value)} onKeyDown={e => e.key === "Enter" && saveTitle()}
-              style={{ flex:1, minWidth:0, padding:"7px 10px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:isCompleted ? C.muted : C.cream, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box", opacity:isCompleted ? .7 : 1 }} />
-            <Btn small onClick={saveTitle} disabled={isCompleted || !titleDraft.trim() || titleDraft.trim() === task.title}>Save</Btn>
+            <input disabled={isClosed} value={titleDraft} onChange={e => setTitleDraft(e.target.value)} onKeyDown={e => e.key === "Enter" && saveTitle()}
+              style={{ flex:1, minWidth:0, padding:"7px 10px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:isClosed ? C.muted : C.cream, fontSize:15, fontWeight:700, outline:"none", boxSizing:"border-box", opacity:isClosed ? .7 : 1 }} />
+            <Btn small onClick={saveTitle} disabled={isClosed || !titleDraft.trim() || titleDraft.trim() === task.title}>Save</Btn>
           </div>
         </div>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"flex-end" }}>
-          {isCompleted && <Btn small orange onClick={reopenTask}>Reopen</Btn>}
+          {isClosed && <Btn small orange onClick={reopenTask}>Reopen</Btn>}
           <Btn small ghost onClick={() => onDelete(task.id)} style={{ color:C.red, borderColor:C.red, flexShrink:0 }}>Delete</Btn>
         </div>
       </div>
@@ -2722,27 +2736,31 @@ function TaskDetail({ task, onUpdate, onDelete, onClose }) {
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
         <Badge color={statusColor(task.status)}>{task.status}</Badge>
         {isCompleted && <Badge color={C.green}>Completed · Locked</Badge>}
+        {isMissed && <Badge color={C.red}>Missed · Locked</Badge>}
         <Badge color={priorityColor(task.priority)}>{task.priority}</Badge>
         {task.due && <Badge color={C.creamSoft}>{"\uD83D\uDCC5 "+task.due}</Badge>}
         {task.time && <Badge color={C.creamSoft}>{"\u23F0 "+task.time}</Badge>}
       </div>
 
-      <Btn small ghost disabled={isCompleted} onClick={cycleStatus} style={{ marginBottom:14 }}>{isCompleted ? "Task locked after completion" : "Cycle Status \u2192"}</Btn>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
+        <Btn small ghost disabled={isClosed} onClick={cycleStatus}>{isClosed ? "Task locked" : "Cycle Status \u2192"}</Btn>
+        {!isClosed && <Btn small ghost style={{ color:C.red, borderColor:C.red }} onClick={markMissed}>Mark Missed</Btn>}
+      </div>
 
       <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:12, marginBottom:14 }}>
         <div style={{ fontSize:11, color:C.gold, letterSpacing:2, marginBottom:8 }}>SMART FIELDS</div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:10 }}>
-          <Select label="STATUS" disabled={isCompleted} options={STATUSES} value={task.status || "To Do"} onChange={e => onUpdate({ ...task, status:e.target.value })} />
-          <Select label="PRIORITY" disabled={isCompleted} options={PRIORITIES} value={task.priority || "Normal"} onChange={e => onUpdate({ ...task, priority:e.target.value })} />
-          <Input label="DUE DATE" disabled={isCompleted} type="date" value={task.due || ""} onChange={e => onUpdate({ ...task, due:e.target.value })} />
-          <Input label="TIME" disabled={isCompleted} type="time" value={task.time || ""} onChange={e => onUpdate({ ...task, time:e.target.value })} />
+          <Select label="STATUS" disabled={isClosed} options={STATUSES} value={task.status || "To Do"} onChange={e => onUpdate({ ...task, status:e.target.value })} />
+          <Select label="PRIORITY" disabled={isClosed} options={PRIORITIES} value={task.priority || "Normal"} onChange={e => onUpdate({ ...task, priority:e.target.value })} />
+          <Input label="DUE DATE" disabled={isClosed} type="date" value={task.due || ""} onChange={e => onUpdate({ ...task, due:e.target.value })} />
+          <Input label="TIME" disabled={isClosed} type="time" value={task.time || ""} onChange={e => onUpdate({ ...task, time:e.target.value })} />
         </div>
-        <Input label="GOAL LINK / NOTE" disabled={isCompleted} value={task.goal || ""} onChange={e => onUpdate({ ...task, goal:e.target.value })} placeholder="Link this task to a goal or write the goal it supports" />
+        <Input label="GOAL LINK / NOTE" disabled={isClosed} value={task.goal || ""} onChange={e => onUpdate({ ...task, goal:e.target.value })} placeholder="Link this task to a goal or write the goal it supports" />
         {task.space === "mopas" && (
           <>
             <Select
               label="MOPAS TASK TYPE"
-              disabled={isCompleted}
+              disabled={isClosed}
               options={MOPAS_TASK_TYPES}
               value={getMopasTaskType(task)}
               onChange={e => {
@@ -2758,9 +2776,9 @@ function TaskDetail({ task, onUpdate, onDelete, onClose }) {
             />
             {getMopasTaskType(task) === "Tender Working On" ? (
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:10 }}>
-                <Select label="TENDER STAGE" disabled={isCompleted} options={TENDER_STAGES} value={task.tenderStage || "New"} onChange={e => onUpdate({ ...task, tenderStage:e.target.value })} />
-                <Input label="REQUESTED DOCUMENTS" disabled={isCompleted} value={task.requestedDocuments || ""} onChange={e => onUpdate({ ...task, requestedDocuments:e.target.value })} placeholder="Tax clearance, RDB, RSSB..." />
-                <Input label="MISSING DOCUMENTS" disabled={isCompleted} value={task.missingDocuments || ""} onChange={e => onUpdate({ ...task, missingDocuments:e.target.value })} placeholder="Documents still missing" />
+                <Select label="TENDER STAGE" disabled={isClosed} options={TENDER_STAGES} value={task.tenderStage || "New"} onChange={e => onUpdate({ ...task, tenderStage:e.target.value })} />
+                <Input label="REQUESTED DOCUMENTS" disabled={isClosed} value={task.requestedDocuments || ""} onChange={e => onUpdate({ ...task, requestedDocuments:e.target.value })} placeholder="Tax clearance, RDB, RSSB..." />
+                <Input label="MISSING DOCUMENTS" disabled={isClosed} value={task.missingDocuments || ""} onChange={e => onUpdate({ ...task, missingDocuments:e.target.value })} placeholder="Documents still missing" />
               </div>
             ) : (
               <div style={{ color:C.creamSoft, fontSize:12, lineHeight:1.5, background:C.bg, border:"1px solid "+C.border, borderRadius:8, padding:10 }}>
@@ -2795,15 +2813,15 @@ function TaskDetail({ task, onUpdate, onDelete, onClose }) {
         </div>
         {items.map((c, i) => (
           <div key={i} style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 0", borderBottom:"1px solid "+C.border }}>
-            <span onClick={() => toggleCheck(i)} style={{ cursor:isCompleted ? "not-allowed" : "pointer", fontSize:16, width:20, flexShrink:0 }}>{c.done ? "\u2705" : "\u2B1C"}</span>
+            <span onClick={() => toggleCheck(i)} style={{ cursor:isClosed ? "not-allowed" : "pointer", fontSize:16, width:20, flexShrink:0 }}>{c.done ? "\u2705" : "\u2B1C"}</span>
             <span style={{ flex:1, color: c.done ? C.muted : C.cream, textDecoration: c.done ? "line-through" : "none", fontSize:13, minWidth:0 }}>{c.text}</span>
-            <span onClick={() => removeCheck(i)} style={{ cursor:isCompleted ? "not-allowed" : "pointer", color:isCompleted ? C.muted : C.red, fontSize:14, padding:"0 4px", flexShrink:0 }}>{"\u2715"}</span>
+            <span onClick={() => removeCheck(i)} style={{ cursor:isClosed ? "not-allowed" : "pointer", color:isClosed ? C.muted : C.red, fontSize:14, padding:"0 4px", flexShrink:0 }}>{"\u2715"}</span>
           </div>
         ))}
         <div style={{ display:"flex", gap:8, marginTop:10 }}>
-          <input disabled={isCompleted} value={newItem} onChange={e => setNewItem(e.target.value)} placeholder={isCompleted ? "Completed task is locked. Reopen to edit." : "Add checklist item..."} onKeyDown={e => e.key === "Enter" && addCheck()}
+          <input disabled={isClosed} value={newItem} onChange={e => setNewItem(e.target.value)} placeholder={isClosed ? "Closed task is locked. Reopen to edit." : "Add checklist item..."} onKeyDown={e => e.key === "Enter" && addCheck()}
             style={{ flex:1, padding:"6px 10px", borderRadius:6, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:13, outline:"none", minWidth:0, boxSizing:"border-box" }} />
-          <Btn small disabled={isCompleted} onClick={addCheck}>Add</Btn>
+          <Btn small disabled={isClosed} onClick={addCheck}>Add</Btn>
         </div>
       </div>
 
@@ -2817,13 +2835,13 @@ function TaskDetail({ task, onUpdate, onDelete, onClose }) {
         ))}
         <textarea
           value={newComment}
-          disabled={isCompleted}
+          disabled={isClosed}
           onChange={e => setNewComment(e.target.value)}
-          placeholder={isCompleted ? "Completed task is locked. Reopen to edit." : "Write a comment..."}
+          placeholder={isClosed ? "Closed task is locked. Reopen to edit." : "Write a comment..."}
           rows={2}
           style={{ width:"100%", padding:"8px 10px", borderRadius:6, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:13, outline:"none", resize:"vertical", boxSizing:"border-box", fontFamily:"inherit", marginTop:4 }}
         />
-        <Btn small disabled={isCompleted} onClick={addComment} style={{ marginTop:6 }}>Add Comment</Btn>
+        <Btn small disabled={isClosed} onClick={addComment} style={{ marginTop:6 }}>Add Comment</Btn>
       </div>
     </div>
     </div>
@@ -3053,7 +3071,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
 
   const dashboardData = useMemo(() => {
     const withDue = tasks.filter(t => safeDate(t.due));
-    const open = tasks.filter(t => t.status !== "Done");
+    const open = tasks.filter(isTaskOpen);
     const overdue = open.filter(t => {
       const diff = dayDiff(t.due, todayStart);
       return diff !== null && diff < 0;
@@ -3082,7 +3100,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
       .sort((a, b) => priorityScore(a) - priorityScore(b) || String(a.title || "").localeCompare(String(b.title || "")))
       .slice(0, 5);
     const mopas = tasks.filter(t => t.space === "mopas");
-    const mopasOpen = mopas.filter(t => t.status !== "Done");
+    const mopasOpen = mopas.filter(isTaskOpen);
     const mopasUrgent = mopasOpen
       .filter(t => t.priority === "Urgent" || t.priority === "High" || safeDate(t.due) === todayKey)
       .sort((a, b) => priorityScore(a) - priorityScore(b) || String(a.title || "").localeCompare(String(b.title || "")))
@@ -3103,13 +3121,13 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
   }, [tasks, todayKey, monthStartKey]);
 
   const total = tasks.length;
-  const activeTaskCount = tasks.filter(t => t.status !== "Done").length;
-  const done = tasks.filter(t => t.status === "Done").length;
+  const activeTaskCount = tasks.filter(isTaskOpen).length;
+  const done = tasks.filter(isTaskDone).length;
   const completionPct = total ? Math.round((done / total) * 100) : 0;
   const weekPct = dashboardData.dueThisWeek.length ? Math.round((dashboardData.doneThisWeek.length / dashboardData.dueThisWeek.length) * 100) : 0;
   const todayRoutineTasks = tasks.filter(t => t.isRoutine && t.routineDate === todayKey);
   const completedRoutineKeys = new Set(todayRoutineTasks.filter(t => t.status === "Done").map(t => t.routineKey));
-  const unfinishedRoutineTasks = todayRoutineTasks.filter(t => t.status !== "Done");
+  const unfinishedRoutineTasks = todayRoutineTasks.filter(isTaskOpen);
   const routinePct = DAILY_ROUTINES.length ? Math.round((completedRoutineKeys.size / DAILY_ROUTINES.length) * 100) : 0;
   const tomorrowRoutineKeys = new Set(tasks.filter(t => t.isRoutine && t.routineDate === tomorrowKey).map(t => t.routineKey));
   const tomorrowReady = tomorrowRoutineKeys.size >= DAILY_ROUTINES.length;
@@ -3340,7 +3358,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
           {SPACES.map(sp => {
             const st = tasks.filter(t => t.space === sp.id);
             const sd = st.filter(t => t.status === "Done").length;
-            const open = st.filter(t => t.status !== "Done");
+            const open = st.filter(isTaskOpen);
             const urgentOpen = open.filter(t => t.priority === "Urgent").length;
             const overdue = open.filter(t => {
               const diff = dayDiff(t.due, todayStart);
@@ -3471,7 +3489,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
 
   const lifePillarData = useMemo(() => LIFE_OS_PILLARS.map(pillar => {
     const pillarTasks = tasks.filter(t => t.space === pillar.space);
-    const open = pillarTasks.filter(t => t.status !== "Done").length;
+    const open = pillarTasks.filter(isTaskOpen).length;
     const doneToday = pillarTasks.filter(t => t.status === "Done" && (t.due === todayKey || t.routineDate === todayKey)).length;
     const routines = pillar.routineKeys.map(key => todayRoutineTasks.find(t => t.routineKey === key)).filter(Boolean);
     const routineDone = routines.filter(t => t.status === "Done").length;
@@ -3510,7 +3528,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
     }
     if (currentBlock && currentBlock.routineKey) {
       const task = routineTaskForBlock(currentBlock);
-      if (task && task.status !== "Done") {
+      if (task && isTaskOpen(task)) {
         return {
           color:C.orange,
           task,
@@ -3730,7 +3748,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
           {["S","M","T","W","T","F","S"].map((d, i) => <div key={d+i} style={{ color:C.muted, fontSize:10, textAlign:"center" }}>{d}</div>)}
           {cells.map((key, i) => {
             const dayTasks = key ? tasks.filter(t => isDateKey(t.due) && t.due === key) : [];
-            const overdue = key && key < todayKey && dayTasks.some(t => t.status !== "Done");
+            const overdue = key && key < todayKey && dayTasks.some(isTaskOpen);
             const isToday = key === todayKey;
             const selected = key === miniSelected;
             return (
@@ -3786,13 +3804,13 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
   );
 
   const taskGroups = useMemo(() => {
-    const openTasks = tasks.filter(t => t.status !== "Done");
+    const openTasks = tasks.filter(isTaskOpen);
     const inProgress = sortTasksSmart(openTasks.filter(t => t.status === "In Progress"));
     const late = sortTasksSmart(openTasks.filter(isLateTask));
     const undone = sortTasksSmart(openTasks.filter(t => !isDateKey(t.due) && t.status !== "In Progress" && t.status !== "Blocked"));
     const active = sortTasksSmart(openTasks.filter(t => t.status === "To Do" && !isLateTask(t) && isDateKey(t.due)));
     const completed = sortTasksSmart(tasks.filter(t => t.status === "Done"));
-    return { active, inProgress, late, undone, completed };
+    return { active, inProgress, late, undone, missed, completed };
   }, [tasks]);
 
   const moneyStats = useMemo(() => {
@@ -3845,6 +3863,7 @@ function Dashboard({ tasks, activeSpace, settings, goSpace, setView, setActiveSp
       { key:"progress", title:"IN PROGRESS", list:taskGroups.inProgress, color:C.orange, sub:"Started but not finished" },
       { key:"late", title:"LATE TASKS", list:taskGroups.late, color:C.red, sub:"Deadline passed" },
       { key:"undone", title:"UNDONE TASKS", list:taskGroups.undone, color:C.gold, sub:"No deadline but still open" },
+      { key:"missed", title:"MISSED TASKS", list:taskGroups.missed, color:C.red, sub:"Closed as not done" },
       { key:"completed", title:"COMPLETED TASKS", list:taskGroups.completed, color:C.green, sub:"Done, locked, and moved down" },
     ];
     const active = categories.find(c => c.key === taskCategoryView) || null;
@@ -4463,7 +4482,7 @@ function RoutineTaskPopup({ task, onClose, onUpdate, onOpenDetails }) {
   const checklist = Array.isArray(t.checklist) ? t.checklist : [];
   const checked = checklist.filter(item => item && typeof item === "object" && item.done === true).length;
   const proofPct = t.status === "Done" ? 100 : checklist.length ? Math.round((checked / checklist.length) * 100) : 0;
-  const updateStatus = (status) => onUpdate({ ...t, status, completedAt:status === "Done" ? new Date().toISOString() : "", locked:status === "Done" });
+  const updateStatus = (status) => onUpdate({ ...t, status, completedAt:status === "Done" ? new Date().toISOString() : "", missedAt:status === "Missed" ? new Date().toISOString() : "", locked:status === "Done" || status === "Missed" });
   const moveTomorrow = () => onUpdate({ ...t, due:addDaysISO(todayKey, 1), routineDate:addDaysISO(todayKey, 1), status:"To Do", locked:false, completedAt:"" });
   const toggleChecklist = (index) => {
     const nextChecklist = checklist.map((item, idx) => {
@@ -4498,9 +4517,10 @@ function RoutineTaskPopup({ task, onClose, onUpdate, onOpenDetails }) {
         </div>
         {(t.details || routine.details) && <div style={{ marginTop:12, color:C.creamSoft, fontSize:13, lineHeight:1.55, background:C.bg, border:"1px solid "+C.border, borderRadius:14, padding:12 }}>{t.details || routine.details}</div>}
         <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
-          {t.status !== "In Progress" && t.status !== "Done" && <Btn ghost onClick={() => updateStatus("In Progress")}>Start</Btn>}
-          {t.status !== "Done" && <Btn orange onClick={() => updateStatus("Done")}>Mark Done</Btn>}
-          {t.status === "Done" && <Btn ghost onClick={() => updateStatus("To Do")}>Reopen</Btn>}
+          {t.status !== "In Progress" && isTaskOpen(t) && <Btn ghost onClick={() => updateStatus("In Progress")}>Start</Btn>}
+          {isTaskOpen(t) && <Btn orange onClick={() => updateStatus("Done")}>Mark Done</Btn>}
+          {isTaskOpen(t) && <Btn ghost style={{ color:C.red, borderColor:C.red }} onClick={() => updateStatus("Missed")}>Mark Missed</Btn>}
+          {isTaskClosed(t) && <Btn ghost onClick={() => updateStatus("To Do")}>Reopen</Btn>}
           {late.isLate && <Btn ghost style={{ color:C.red, borderColor:C.red }} onClick={moveTomorrow}>Move tomorrow</Btn>}
           <Btn ghost onClick={() => { onOpenDetails?.(t); onClose(); }}>Open full details</Btn>
         </div>
@@ -4523,7 +4543,7 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
 
   const priorityRank = (task = {}) => task.priority === "Urgent" ? 0 : task.priority === "High" ? 1 : task.priority === "Normal" ? 2 : 3;
   const deadlineRank = (task = {}) => {
-    if (task.status === "Done") return 9000;
+    if (isTaskClosed(task)) return 9000;
     if (!isDateKey(task.due)) return 5000;
     const diff = daysBetweenLocal(todayKey, task.due);
     if (diff === null) return 5000;
@@ -4536,6 +4556,7 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
     const t = normalizeTask(task);
     let score = 10;
     if (t.status === "Done") score -= 80;
+    if (t.status === "Missed") score -= 70;
     if (t.status === "In Progress") score += 30;
     if (t.priority === "Urgent") score += 45;
     if (t.priority === "High") score += 28;
@@ -4571,7 +4592,7 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
     const filtered = query ? safeTasks.filter(task => getTaskSearchText(task).includes(query)) : safeTasks;
     return [...filtered].sort((aRaw, bRaw) => {
       const a = normalizeTask(aRaw), b = normalizeTask(bRaw);
-      if ((a.status === "Done") !== (b.status === "Done")) return a.status === "Done" ? 1 : -1;
+      if (isTaskClosed(a) !== isTaskClosed(b)) return isTaskClosed(a) ? 1 : -1;
       if (isLateTask(a) !== isLateTask(b)) return isLateTask(a) ? -1 : 1;
       const pr = priorityRank(a) - priorityRank(b);
       if (pr) return pr;
@@ -4584,20 +4605,22 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
   }, [safeTasks, taskSearch, scoreTask]);
 
   const metrics = useMemo(() => {
-    const open = ordered.filter(t => t.status !== "Done");
-    const done = ordered.filter(t => t.status === "Done");
+    const open = ordered.filter(isTaskOpen);
+    const done = ordered.filter(isTaskDone);
+    const missed = ordered.filter(isTaskMissed);
     const late = open.filter(isLateTask);
     const today = open.filter(t => t.due === todayKey || (t.isRoutine && t.routineDate === todayKey));
     const inProgress = open.filter(t => t.status === "In Progress");
     const urgent = open.filter(t => t.priority === "Urgent");
     const nextMission = open[0] || null;
     const donePct = ordered.length ? Math.round((done.length / ordered.length) * 100) : 0;
-    return { open, done, late, today, inProgress, urgent, nextMission, donePct };
+    return { open, done, missed, late, today, inProgress, urgent, nextMission, donePct };
   }, [ordered, todayKey]);
 
   const filteredSections = useMemo(() => {
-    const open = ordered.filter(t => t.status !== "Done");
-    const done = ordered.filter(t => t.status === "Done");
+    const open = ordered.filter(isTaskOpen);
+    const done = ordered.filter(isTaskDone);
+    const missed = ordered.filter(isTaskMissed);
     const next = metrics.nextMission ? [metrics.nextMission] : [];
     const nextId = metrics.nextMission?.id;
     const routine = open.filter(t => t.id !== nextId && t.isRoutine && (t.routineDate === todayKey || t.due === todayKey));
@@ -4622,6 +4645,7 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
       { key:"recovery", title:"RECOVERY QUEUE", subtitle:"Late tasks are separated and sorted by priority.", items:recovery, color:C.red, empty:"No late task in this space." },
       { key:"week", title:"THIS WEEK", subtitle:"Upcoming work within seven days.", items:thisWeek, color:C.purple, empty:"No task due this week." },
       { key:"backlog", title:"BACKLOG / PARKING", subtitle:"Useful tasks without urgent timing.", items:backlog, color:C.muted, empty:"No backlog item." },
+      { key:"missed", title:"MISSED / NOT DONE", subtitle:"Tasks you intentionally closed as not completed. Reopen or move tomorrow if needed.", items:missed, color:C.red, empty:"No missed task yet." },
       { key:"proof", title:"DONE / PROOF", subtitle:"Completed work stays visible as proof of progress.", items:done, color:C.green, empty:"No completed task yet." },
     ];
     if (taskLens === "mission") return allSections;
@@ -4631,10 +4655,11 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
     return allSections;
   }, [ordered, metrics.nextMission, todayKey, taskLens]);
 
-  const markDone = (task) => onUpdate({ ...task, status:"Done", locked:true, completedAt:new Date().toISOString() });
-  const startTask = (task) => onUpdate({ ...task, status:"In Progress" });
+  const markDone = (task) => onUpdate({ ...task, status:"Done", locked:true, completedAt:new Date().toISOString(), missedAt:"" });
+  const markMissed = (task) => onUpdate({ ...task, status:"Missed", locked:true, missedAt:new Date().toISOString(), completedAt:"" });
+  const startTask = (task) => onUpdate({ ...task, status:"In Progress", locked:false, missedAt:"", completedAt:"" });
   const moveTomorrow = (task) => onUpdate({ ...task, due:addDaysISO(todayKey, 1), status:task.status === "Done" ? "To Do" : task.status });
-  const reopenTask = (task) => onUpdate({ ...task, status:"To Do", locked:false, completedAt:"" });
+  const reopenTask = (task) => onUpdate({ ...task, status:"To Do", locked:false, completedAt:"", missedAt:"" });
   const toggleSection = (key) => setCollapsedSections(prev => ({ ...(prev || {}), [key]:!prev?.[key] }));
   const collapseAll = () => setCollapsedSections(filteredSections.reduce((acc, section) => ({ ...acc, [section.key]:true }), {}));
   const expandAll = () => setCollapsedSections({});
@@ -4646,25 +4671,27 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
   const renderTaskCard = (task, sectionKey) => {
     const t = normalizeTask(task);
     const done = t.status === "Done";
+    const missed = t.status === "Missed";
+    const closed = isTaskClosed(t);
     const late = taskLateInfo(t);
     const due = dueInfo(t);
     const mopasType = t.space === "mopas" ? getMopasTaskType(t) : "";
     const checklistItems = Array.isArray(t.checklist) ? t.checklist : [];
     const checklistDone = checklistItems.filter(item => item && typeof item === "object" && item.done === true).length;
     const checklistTotal = checklistItems.length;
-    const progressPct = done ? 100 : checklistTotal ? Math.round((checklistDone / checklistTotal) * 100) : (t.status === "In Progress" ? 45 : 0);
-    const borderColor = done ? C.green : late.isLate ? C.red : sectionKey === "next" ? C.orange : priorityColor(t.priority);
-    const statusLabel = done ? "Done" : late.isLate ? "Late" : t.status;
-    const primaryAction = done ? "Reopen" : t.status === "In Progress" ? "Done" : "Start";
+    const progressPct = done ? 100 : missed ? 0 : checklistTotal ? Math.round((checklistDone / checklistTotal) * 100) : (t.status === "In Progress" ? 45 : 0);
+    const borderColor = done ? C.green : missed ? C.red : late.isLate ? C.red : sectionKey === "next" ? C.orange : priorityColor(t.priority);
+    const statusLabel = done ? "Done" : missed ? "Missed" : late.isLate ? "Late" : t.status;
+    const primaryAction = closed ? "Reopen" : t.status === "In Progress" ? "Done" : "Start";
     const runPrimaryAction = (e) => {
       e.stopPropagation();
-      if (done) reopenTask(t);
+      if (closed) reopenTask(t);
       else if (t.status === "In Progress") markDone(t);
       else startTask(t);
     };
     const timeDateLine = `${t.time || "No time"} · ${due.date || "No date"} · ${due.label}`;
     return (
-      <div key={t.id} onClick={() => setSelected(t)} style={{ background:selected?.id === t.id ? C.elevated : C.bg, border:"1px solid "+(selected?.id === t.id ? C.orange : C.border), borderLeft:"4px solid "+borderColor, borderRadius:14, padding:"12px 13px", cursor:"pointer", opacity:done ? .7 : 1, boxShadow:sectionKey === "next" ? "0 12px 24px rgba(0,0,0,.18)" : "none" }}>
+      <div key={t.id} onClick={() => setSelected(t)} style={{ background:selected?.id === t.id ? C.elevated : C.bg, border:"1px solid "+(selected?.id === t.id ? C.orange : C.border), borderLeft:"4px solid "+borderColor, borderRadius:14, padding:"12px 13px", cursor:"pointer", opacity:closed ? .7 : 1, boxShadow:sectionKey === "next" ? "0 12px 24px rgba(0,0,0,.18)" : "none" }}>
         <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:10, alignItems:"start" }}>
           <div style={{ minWidth:0 }}>
             <div style={{ display:"flex", alignItems:"center", gap:7, minWidth:0, flexWrap:"wrap" }}>
@@ -4674,13 +4701,14 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
               {mopasType && <span style={{ color:mopasType === "Tender Working On" ? C.gold : C.blue, fontSize:10, fontWeight:900, letterSpacing:1 }}>{mopasType}</span>}
               {t.isRoutine && <span style={{ color:C.gold, fontSize:10, fontWeight:900, letterSpacing:1 }}>ROUTINE</span>}
             </div>
-            <div style={{ fontWeight:900, fontSize:15, color:done ? C.muted : late.isLate ? C.red : C.cream, lineHeight:1.35, textDecoration:done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", marginTop:5 }}>{t.title}</div>
+            <div style={{ fontWeight:900, fontSize:15, color:closed ? C.muted : late.isLate ? C.red : C.cream, lineHeight:1.35, textDecoration:done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", marginTop:5 }}>{t.title}</div>
             <div style={{ color:due.color, fontSize:12, marginTop:5, fontWeight:800 }}>{timeDateLine}</div>
             <div style={{ color:C.muted, fontSize:11, marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{(t.folder || "General") + (t.list ? " / " + t.list : "")}</div>
           </div>
           <div style={{ display:"flex", gap:6, alignItems:"center", justifyContent:"flex-end", flexWrap:"wrap" }}>
             <TaskActionButton orange={!done && t.status === "In Progress"} onClick={runPrimaryAction}>{primaryAction}</TaskActionButton>
-            {!done && late.isLate && <TaskActionButton danger onClick={(e) => { e.stopPropagation(); moveTomorrow(t); }}>Tomorrow</TaskActionButton>}
+            {!closed && <TaskActionButton danger onClick={(e) => { e.stopPropagation(); markMissed(t); }}>Missed</TaskActionButton>}
+            {!closed && late.isLate && <TaskActionButton danger onClick={(e) => { e.stopPropagation(); moveTomorrow(t); }}>Tomorrow</TaskActionButton>}
             <TaskActionButton onClick={(e) => { e.stopPropagation(); setSelected(t); }}>Details</TaskActionButton>
           </div>
         </div>
@@ -4732,6 +4760,7 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
             <Badge color={C.red}>{metrics.urgent.length} urgent</Badge>
             <Badge color={metrics.late.length ? C.red : C.green}>{metrics.late.length} late</Badge>
             <Badge color={C.green}>{metrics.done.length} done</Badge>
+            <Badge color={C.red}>{metrics.missed.length} missed</Badge>
           </div>
         </div>
         {metrics.nextMission && (
@@ -4793,7 +4822,7 @@ function BoardView({ tasks, selected, setSelected, onUpdate, settings }) {
               const late = taskLateInfo(t);
               return (
               <div key={t.id} onClick={() => setSelected(t)} style={{ background:C.surface, borderRadius:10, padding:12, marginBottom:8, cursor:"pointer", border: selected && selected.id === t.id ? "1px solid "+C.orange : "1px solid "+(done ? C.green : C.border), borderLeft:"4px solid "+(done ? C.green : late.isLate ? C.red : priorityColor(t.priority)), opacity:done ? .62 : 1 }}>
-                <div style={{ fontWeight:700, fontSize:13, color:done ? C.muted : late.isLate ? C.red : C.cream, marginBottom:4, lineHeight:1.35, textDecoration:done ? "line-through" : "none" }}>{t.title}</div>
+                <div style={{ fontWeight:700, fontSize:13, color:closed ? C.muted : late.isLate ? C.red : C.cream, marginBottom:4, lineHeight:1.35, textDecoration:done ? "line-through" : "none" }}>{t.title}</div>
                 <div style={{ color:C.muted, fontSize:11, marginBottom:8 }}>{t.due || "No deadline"}{t.time ? " · " + t.time : ""}</div>
                 <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
                   <Badge color={done ? C.green : priorityColor(t.priority)}>{done ? "Completed" : t.priority}</Badge>
@@ -4897,7 +4926,7 @@ function CalendarView({ tasks }) {
   };
   const dayTone = (dayTasks) => {
     if (!dayTasks.length) return null;
-    const open = dayTasks.filter(t => t.status !== "Done");
+    const open = dayTasks.filter(isTaskOpen);
     if (open.some(t => safeTaskDate(t.due) && new Date(safeTaskDate(t.due) + "T00:00:00") < todayDate)) return C.red;
     if (open.some(t => safeTaskDate(t.due) === todayKey)) return C.orange;
     if (open.length) return C.blue;
@@ -6175,8 +6204,8 @@ function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSe
   const itsindaThisWeek = weekMoney
     .filter(e => String(e.category || "").toLowerCase().includes("itsinda") || e.linkType === "itsinda")
     .reduce((total, e) => total + numberValue(e.amount), 0);
-  const openTasks = safeTasks.filter(t => t.status !== "Done");
-  const doneTasks = safeTasks.filter(t => t.status === "Done");
+  const openTasks = safeTasks.filter(isTaskOpen);
+  const doneTasks = safeTasks.filter(isTaskDone);
   const todayTasks = openTasks.filter(t => t.due === todayKey || (t.isRoutine && t.routineDate === todayKey));
   const lateTasks = openTasks.filter(isLateTask).sort(compareTaskSmart);
   const urgentTasks = openTasks.filter(t => t.priority === "Urgent" || t.priority === "High").sort(compareTaskSmart);
@@ -6243,9 +6272,9 @@ function LifeOSFutureView({ tasks = [], settings, setActiveSpace, setView, setSe
   };
   const systemCards = SPACES.map(space => {
     const spaceTasks = safeTasks.filter(t => t.space === space.id);
-    const open = spaceTasks.filter(t => t.status !== "Done");
+    const open = spaceTasks.filter(isTaskOpen);
     const late = open.filter(isLateTask);
-    const done = spaceTasks.filter(t => t.status === "Done");
+    const done = spaceTasks.filter(isTaskDone);
     const todayOpen = open.filter(t => t.due === todayKey || (t.isRoutine && t.routineDate === todayKey));
     const score = spaceTasks.length ? Math.round((done.length / spaceTasks.length) * 100) : 0;
     return { ...space, total:spaceTasks.length, open:open.length, late:late.length, today:todayOpen.length, done:done.length, score };
@@ -6932,7 +6961,7 @@ function AfterglowApp() {
     if (filter === "No deadline") return !isDateKey(task.due);
     const today = localTodayISO();
     const diff = isDateKey(task.due) ? daysBetweenLocal(today, task.due) : null;
-    if (filter === "Overdue") return diff !== null && diff < 0 && task.status !== "Done";
+    if (filter === "Overdue") return diff !== null && diff < 0 && isTaskOpen(task);
     if (filter === "Today") return diff === 0;
     if (filter === "Tomorrow") return diff === 1;
     if (filter === "This week") return diff !== null && diff >= 0 && diff <= 7;
@@ -6958,8 +6987,10 @@ function AfterglowApp() {
     });
 
     const finalTask = task.status === "Done" && !task.completedAt
-      ? { ...task, completedAt:new Date().toISOString(), locked:true }
-      : task;
+      ? { ...task, completedAt:new Date().toISOString(), missedAt:"", locked:true }
+      : task.status === "Missed" && !task.missedAt
+        ? { ...task, missedAt:new Date().toISOString(), completedAt:"", locked:true }
+        : task;
 
     // Save locally first so the user never loses the task if the cloud is offline.
     setTasks(prev => sortTasksSmart([finalTask, ...prev]));
@@ -7001,8 +7032,9 @@ function AfterglowApp() {
         const oldTask = normalizeTask(t);
         if (!cloudId) cloudId = getTaskCloudId(oldTask);
         let nextTask = normalizeTask({ ...oldTask, ...u, updatedAt:new Date().toISOString() });
-        if (nextTask.status === "Done" && oldTask.status !== "Done") nextTask = { ...nextTask, completedAt:new Date().toISOString(), locked:true };
-        if (nextTask.status !== "Done" && oldTask.status === "Done") nextTask = { ...nextTask, completedAt:"", locked:false };
+        if (nextTask.status === "Done" && oldTask.status !== "Done") nextTask = { ...nextTask, completedAt:new Date().toISOString(), missedAt:"", locked:true };
+        if (nextTask.status === "Missed" && oldTask.status !== "Missed") nextTask = { ...nextTask, missedAt:new Date().toISOString(), completedAt:"", locked:true };
+        if (!isTaskClosed(nextTask) && isTaskClosed(oldTask)) nextTask = { ...nextTask, completedAt:"", missedAt:"", locked:false };
         apiPayload = nextTask;
         selectedNext = nextTask;
         return nextTask;
@@ -7146,7 +7178,7 @@ This will clear ${total} existing task${total === 1 ? "" : "s"} and create today
     const todayKey = localTodayISO();
     const tomorrowKey = addDaysISO(todayKey, 1);
     setTasks(prev => prev.map(t => (
-      t && t.status !== "Done" && !t.isRoutine && isDateKey(t.due) && t.due === todayKey
+      t && isTaskOpen(t) && !t.isRoutine && isDateKey(t.due) && t.due === todayKey
         ? { ...t, due: tomorrowKey, updatedAt:new Date().toISOString() }
         : t
     )));
@@ -7268,7 +7300,7 @@ This will clear ${total} existing task${total === 1 ? "" : "s"} and create today
           <div style={{ fontSize:9, color:C.muted, letterSpacing:2.5, fontWeight:900, padding:"10px 4px 3px" }}>SPACES</div>
           {SPACES.map(s => {
             const count = tasks.filter(t => t.space === s.id).length;
-            const late = tasks.filter(t => t.space === s.id && t.status !== "Done" && isDateKey(t.due) && t.due < localTodayISO()).length;
+            const late = tasks.filter(t => t.space === s.id && isTaskOpen(t) && isDateKey(t.due) && t.due < localTodayISO()).length;
             const active = activeSpace === s.id && !isGlobalView;
             return (
               <div key={s.id} onClick={() => goSpace(s.id)} style={{ padding:"8px 10px", borderRadius:8, cursor:"pointer", marginBottom:1, display:"flex", alignItems:"center", gap:8, background:active ? C.elevated : "transparent", borderLeft:"3px solid "+(active ? s.color : "transparent") }}>
