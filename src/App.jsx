@@ -236,8 +236,13 @@ const PURCHASE_GOALS_KEY = "afterglow_purchase_goals_v1";
 const FUTURE_GOALS_KEY = "afterglow_future_goals_v1";
 const ITSINDA_WEEKLY_AMOUNT = 20000;
 const TASK_CATEGORY_COLLAPSE_KEY = "afterglow_task_category_collapse_v1";
+const DEFAULT_NAV_NAMES = {
+  dashboard:"Command Center", tasks:"Tasks", board:"Board", table:"Table", calendar:"Calendar", goals:"Goals", documents:"Documents", reports:"Reports", knowledge:"Knowledge", lifeOS:"Life OS Lab", settings:"Settings", addTask:"New Task", moneyHealth:"Financial Health", moneyTasks:"Money Tasks"
+};
+const DEFAULT_SPACE_NAMES = { wakeup:"Wake-up Discipline", mopas:"MOPAS Operations", health:"Health & Fitness", drawing:"Drawing / Creative", afterglow:"AFTERGLOW Brand", money:"Money & Savings" };
 const DEFAULT_APP_SETTINGS = {
   general:{ userName:"ISHIMWE Samuel", roleTitle:"Operations Manager / 3D Animator", companyName:"MOPAS Ltd", workspaceName:"AFTERGLOW / MOPAS Workspace", appShortName:"AFTERGLOW", loginTitle:"Login first. Work from anywhere.", loginSubtitle:"Your daily operating system for MOPAS operations, personal discipline, money, documents, and creative growth.", startNote:"Ready to run your day.", supportNote:"Built for phone, tablet, and desktop use.", defaultSpace:"wakeup", timezone:"Africa/Kigali", logoSize:"medium" },
+  names:{ nav:DEFAULT_NAV_NAMES, spaces:DEFAULT_SPACE_NAMES },
   routine:{ wakeupTime:"06:00", readingTarget:"20 pages", workoutTime:"06:50", eveningWorkoutTime:"18:30", drawingboxTime:"20:00", personalProjectTime:"21:00", afterglowBrandTime:"22:00", endDayReviewTime:"22:45", sleepTarget:"23:00", autoRoutineTasks:true },
   tasks:{ defaultPriority:"Normal", autoMoveUnfinished:"ask first", completedVisibility:"show", overdueBehavior:"move late down", weekStartDay:"Sunday", defaultReminderDays:1, showCompletedInFocus:false, doneDefaultMigrated:true },
   commandCenter:{
@@ -278,6 +283,7 @@ const mergeAppSettings = (value = {}) => {
     ...DEFAULT_APP_SETTINGS,
     ...value,
     general:{ ...DEFAULT_APP_SETTINGS.general, ...(value.general || {}) },
+    names:{ nav:{ ...DEFAULT_NAV_NAMES, ...((value.names || {}).nav || {}) }, spaces:{ ...DEFAULT_SPACE_NAMES, ...((value.names || {}).spaces || {}) } },
     routine:{ ...DEFAULT_APP_SETTINGS.routine, ...(value.routine || {}) },
     tasks:{ ...DEFAULT_APP_SETTINGS.tasks, ...(value.tasks || {}), completedVisibility:"show" },
     commandCenter:{
@@ -307,6 +313,18 @@ const mergeAppSettings = (value = {}) => {
 };
 const loadAppSettings = () => mergeAppSettings(readStore(APP_SETTINGS_KEY, DEFAULT_APP_SETTINGS));
 const saveAppSettings = (settings) => writeStore(APP_SETTINGS_KEY, mergeAppSettings(settings));
+const getNavLabel = (settings, key, fallback) => mergeAppSettings(settings || {}).names?.nav?.[key] || fallback;
+const getSpaceDisplayName = (settings, spaceOrId, fallback = "") => {
+  const id = typeof spaceOrId === "string" ? spaceOrId : spaceOrId?.id;
+  const original = typeof spaceOrId === "object" ? spaceOrId?.name : fallback;
+  return mergeAppSettings(settings || {}).names?.spaces?.[id] || original || fallback || id || "Space";
+};
+const getViewDisplayLabel = (settings, viewName = "") => {
+  const key = viewName === "Goals" ? "goals" : viewName;
+  const labels = { list:"tasks", board:"board", table:"table", calendar:"calendar", goals:"goals", documents:"documents", "daily report":"dailyReport", "tender folder":"tenderFolder" };
+  const navKey = labels[key] || labels[String(key).toLowerCase()] || String(key).toLowerCase();
+  return getNavLabel(settings, navKey, String(viewName).split(" ").map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(" "));
+};
 
 const pad2 = (value) => String(value).padStart(2, "0");
 const dateKey = (date) => {
@@ -1639,12 +1657,10 @@ function AfterglowCommandHubV3({ tasks, settings, goSpace, setView, setActiveSpa
                 <div style={{ display:"grid", gap:6 }}>
                   {[
                     { label:"Command Center", fn:() => setTab("overview") },
-                    { label:"Task Boards", fn:() => setView("boards") },
-                    { label:"Data Hub", fn:() => setView("database") },
-                    { label:"Automations", fn:() => setView("automations") },
-                    { label:"Reports", fn:() => setView("reports") },
-                    { label:"Knowledge", fn:() => setView("knowledge") },
-                    { label:"Life OS Lab", fn:() => setView("life os") },
+                    { label:getNavLabel(settings, "board", "Task Board"), fn:() => setView("boards") },
+                    { label:getNavLabel(settings, "reports", "Reports"), fn:() => setView("reports") },
+                    { label:getNavLabel(settings, "knowledge", "Knowledge"), fn:() => setView("knowledge") },
+                    { label:getNavLabel(settings, "lifeOS", "Life OS Lab"), fn:() => setView("life os") },
                     { label:"Settings", fn:() => setView("settings") },
                   ].map(item => <Btn key={item.label} ghost onClick={item.fn} style={{ textAlign:"left", justifyContent:"flex-start", fontSize:12 }}>{item.label}</Btn>)}
                 </div>
@@ -4015,11 +4031,19 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
     const todayIncome = sum(byDate, "income");
     const todayExpense = sum(byDate, "expense");
     const todaySavings = sum(byDate, "savings");
+    const weeklyIncome = sum(inWeek, "income");
+    const weeklyExpense = sum(inWeek, "expense");
     const weeklySavings = sum(inWeek, "savings");
     const monthlySavings = sum(inMonth, "savings");
     const monthIncome = sum(inMonth, "income");
     const monthExpense = sum(inMonth, "expense");
+    const itsindaEntries = entries.filter(e => String(e.category || "").toLowerCase().includes("itsinda") || e.linkType === "itsinda");
     const itsindaThisWeek = inWeek.filter(e => String(e.category || "").toLowerCase().includes("itsinda") || e.linkType === "itsinda").reduce((total, e) => total + numberValue(e.amount), 0);
+    const itsindaTotal = itsindaEntries.reduce((total, e) => total + numberValue(e.amount), 0);
+    const itsindaWeeksPaid = Math.floor(itsindaTotal / ITSINDA_WEEKLY_AMOUNT);
+    const itsindaAnnualGoal = ITSINDA_WEEKLY_AMOUNT * 52;
+    const itsindaRemainingYear = Math.max(0, itsindaAnnualGoal - itsindaTotal);
+    const itsindaWeeklyGap = Math.max(0, ITSINDA_WEEKLY_AMOUNT - itsindaThisWeek);
     const itsindaPaid = itsindaThisWeek >= ITSINDA_WEEKLY_AMOUNT || tasks.some(t => t.routineKey === "itsinda-weekly-savings" && t.routineDate >= weekRange.start && t.routineDate <= weekRange.end && t.status === "Done");
     const totalPurchaseSaved = safePurchases.reduce((total, goal) => total + numberValue(goal.savedAmount), 0);
     const totalPurchaseTarget = safePurchases.reduce((total, goal) => total + numberValue(goal.targetAmount), 0);
@@ -4027,8 +4051,9 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
     const totalFutureTarget = safeFutureGoals.reduce((total, goal) => total + numberValue(goal.targetAmount), 0);
     return {
       todayIncome, todayExpense, todaySavings, todayNet:todayIncome - todayExpense,
-      weeklySavings, monthlySavings, monthIncome, monthExpense, monthNet:monthIncome - monthExpense,
-      itsindaThisWeek, itsindaPaid,
+      weeklyIncome, weeklyExpense, weeklySavings, weeklyNet:weeklyIncome - weeklyExpense,
+      monthlySavings, monthIncome, monthExpense, monthNet:monthIncome - monthExpense,
+      itsindaThisWeek, itsindaTotal, itsindaWeeksPaid, itsindaAnnualGoal, itsindaRemainingYear, itsindaWeeklyGap, itsindaPaid,
       purchaseProgress:moneyProgress(totalPurchaseSaved, totalPurchaseTarget),
       futureProgress:moneyProgress(totalFutureSaved, totalFutureTarget),
     };
@@ -4159,9 +4184,15 @@ function MoneySpaceFinancialHealth({ tasks = [], onUpdate }) {
     { l:"Today Income", v:rwf(moneyStats.todayIncome), c:C.green },
     { l:"Today Expense", v:rwf(moneyStats.todayExpense), c:C.red },
     { l:"Today Net", v:rwf(moneyStats.todayNet), c:moneyStats.todayNet >= 0 ? C.green : C.red },
+    { l:"Weekly Income", v:rwf(moneyStats.weeklyIncome), c:C.green },
+    { l:"Weekly Expense", v:rwf(moneyStats.weeklyExpense), c:moneyStats.weeklyExpense > 0 ? C.red : C.muted },
+    { l:"Weekly Net", v:rwf(moneyStats.weeklyNet), c:moneyStats.weeklyNet >= 0 ? C.green : C.red },
     { l:"Weekly Savings", v:rwf(moneyStats.weeklySavings), c:C.gold },
     { l:"Monthly Savings", v:rwf(moneyStats.monthlySavings), c:C.blue },
-    { l:"ITSINDA", v:moneyStats.itsindaPaid ? "Paid" : "Pending", c:moneyStats.itsindaPaid ? C.green : C.orange },
+    { l:"ITSINDA This Week", v:moneyStats.itsindaPaid ? "Paid" : `Need ${rwf(moneyStats.itsindaWeeklyGap)}`, c:moneyStats.itsindaPaid ? C.green : C.orange },
+    { l:"ITSINDA Total", v:rwf(moneyStats.itsindaTotal), c:C.gold },
+    { l:"ITSINDA Weeks", v:`${moneyStats.itsindaWeeksPaid}/52`, c:C.gold },
+    { l:"ITSINDA Goal Left", v:rwf(moneyStats.itsindaRemainingYear), c:moneyStats.itsindaRemainingYear ? C.orange : C.green },
     { l:"Purchase Goals", v:`${moneyStats.purchaseProgress}%`, c:C.gold },
     { l:"Future Goals", v:`${moneyStats.futureProgress}%`, c:C.blue },
   ];
@@ -4408,59 +4439,77 @@ function RoutineTaskPopup({ task, onClose, onUpdate, onOpenDetails }) {
   );
 }
 
-function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, settings, onClearTasks }) {
+function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, settings }) {
   const safeTasks = Array.isArray(tasks) ? tasks.map(normalizeTask) : [];
   const [collapsedSections, setCollapsedSections] = useState(() => readStore(TASK_CATEGORY_COLLAPSE_KEY, {}));
   const [taskSearch, setTaskSearch] = useState("");
   const [taskLens, setTaskLens] = useState("mission");
-  const [routinePopupTask, setRoutinePopupTask] = useState(null);
 
   useEffect(() => { writeStore(TASK_CATEGORY_COLLAPSE_KEY, collapsedSections); }, [collapsedSections]);
 
   const todayKey = localTodayISO();
   const currentSpace = SPACES.find(s => s.id === activeSpace) || SPACES[0];
+  const currentSpaceName = getSpaceDisplayName(settings, currentSpace);
+
+  const priorityRank = (task = {}) => task.priority === "Urgent" ? 0 : task.priority === "High" ? 1 : task.priority === "Normal" ? 2 : 3;
+  const deadlineRank = (task = {}) => {
+    if (task.status === "Done") return 9000;
+    if (!isDateKey(task.due)) return 5000;
+    const diff = daysBetweenLocal(todayKey, task.due);
+    if (diff === null) return 5000;
+    if (diff < 0) return -1000 + diff;
+    if (diff === 0) return 0;
+    return diff;
+  };
 
   const scoreTask = useCallback((task = {}) => {
     const t = normalizeTask(task);
     let score = 10;
     if (t.status === "Done") score -= 80;
-    if (t.status === "In Progress") score += 28;
-    if (t.priority === "Urgent") score += 38;
-    if (t.priority === "High") score += 24;
-    if (t.priority === "Normal") score += 10;
-    if (isLateTask(t)) score += 45;
+    if (t.status === "In Progress") score += 30;
+    if (t.priority === "Urgent") score += 45;
+    if (t.priority === "High") score += 28;
+    if (t.priority === "Normal") score += 12;
+    if (isLateTask(t)) score += 50;
     if (isDateKey(t.due)) {
       const diff = daysBetweenLocal(todayKey, t.due);
-      if (diff === 0) score += 35;
-      else if (diff === 1) score += 22;
-      else if (diff !== null && diff > 1 && diff <= 7) score += Math.max(4, 16 - diff);
-      else if (diff !== null && diff < 0) score += Math.min(40, Math.abs(diff) * 5);
+      if (diff === 0) score += 38;
+      else if (diff === 1) score += 24;
+      else if (diff !== null && diff > 1 && diff <= 7) score += Math.max(6, 18 - diff);
+      else if (diff !== null && diff < 0) score += Math.min(45, Math.abs(diff) * 6);
     }
     if (t.time) score += 5;
-    if (t.isRoutine && t.routineDate === todayKey) score += 18;
+    if (t.isRoutine && t.routineDate === todayKey) score += 20;
     if (t.space === "mopas") score += 6;
     if (isMopasTenderWork(t)) score += 12;
     return Math.max(0, Math.min(100, Math.round(score)));
   }, [todayKey]);
 
   const dueInfo = useCallback((task = {}) => {
-    if (!isDateKey(task.due)) return { label:"No deadline", color:C.muted, diff:null };
+    if (!isDateKey(task.due)) return { label:"No deadline", color:C.muted, diff:null, date:"No date" };
     const late = taskLateInfo(task);
-    if (late.isLate) return { label:late.label, color:C.red, diff:daysBetweenLocal(todayKey, task.due) };
     const diff = daysBetweenLocal(todayKey, task.due);
-    if (diff === 0) return { label:"Today", color:C.orange, diff };
-    if (diff === 1) return { label:"Tomorrow", color:C.blue, diff };
-    if (diff !== null && diff > 1 && diff <= 7) return { label:`In ${diff} days`, color:C.gold, diff };
-    return { label:task.due, color:C.creamSoft, diff };
+    if (late.isLate) return { label:late.label, color:C.red, diff, date:task.due };
+    if (diff === 0) return { label:"Today", color:C.orange, diff, date:task.due };
+    if (diff === 1) return { label:"Tomorrow", color:C.blue, diff, date:task.due };
+    if (diff !== null && diff > 1 && diff <= 7) return { label:`In ${diff} days`, color:C.gold, diff, date:task.due };
+    return { label:task.due, color:C.creamSoft, diff, date:task.due };
   }, [todayKey]);
 
   const ordered = useMemo(() => {
     const query = safeLower(taskSearch).trim();
     const filtered = query ? safeTasks.filter(task => getTaskSearchText(task).includes(query)) : safeTasks;
-    return [...filtered].sort((a, b) => {
+    return [...filtered].sort((aRaw, bRaw) => {
+      const a = normalizeTask(aRaw), b = normalizeTask(bRaw);
+      if ((a.status === "Done") !== (b.status === "Done")) return a.status === "Done" ? 1 : -1;
+      if (isLateTask(a) !== isLateTask(b)) return isLateTask(a) ? -1 : 1;
+      const pr = priorityRank(a) - priorityRank(b);
+      if (pr) return pr;
+      const dr = deadlineRank(a) - deadlineRank(b);
+      if (dr) return dr;
       const scoreDiff = scoreTask(b) - scoreTask(a);
       if (scoreDiff) return scoreDiff;
-      return compareTaskSmart(a, b);
+      return String(a.time || "99:99").localeCompare(String(b.time || "99:99")) || String(a.title || "").localeCompare(String(b.title || ""));
     });
   }, [safeTasks, taskSearch, scoreTask]);
 
@@ -4470,11 +4519,11 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
     const late = open.filter(isLateTask);
     const today = open.filter(t => t.due === todayKey || (t.isRoutine && t.routineDate === todayKey));
     const inProgress = open.filter(t => t.status === "In Progress");
-    const highImpact = open.filter(t => scoreTask(t) >= 70);
-    const nextMission = highImpact[0] || open[0] || null;
+    const urgent = open.filter(t => t.priority === "Urgent");
+    const nextMission = open[0] || null;
     const donePct = ordered.length ? Math.round((done.length / ordered.length) * 100) : 0;
-    return { open, done, late, today, inProgress, highImpact, nextMission, donePct };
-  }, [ordered, todayKey, scoreTask]);
+    return { open, done, late, today, inProgress, urgent, nextMission, donePct };
+  }, [ordered, todayKey]);
 
   const filteredSections = useMemo(() => {
     const open = ordered.filter(t => t.status !== "Done");
@@ -4497,12 +4546,12 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
       return diff === null || diff > 7;
     });
     const allSections = [
-      { key:"next", title:"NEXT MISSION", subtitle:"The highest-impact task according to priority, deadline, status, and routine timing.", items:next, color:C.orange, empty:"No open mission. Add a task or sync from cloud." },
-      { key:"routine", title:"ROUTINE ENGINE", subtitle:"Daily discipline tasks due today. These keep your system alive.", items:routine, color:C.gold, empty:"No routine task due today." },
-      { key:"progress", title:"IN PROGRESS", subtitle:"Tasks already started. Finish or update them before opening too many new actions.", items:progress, color:C.blue, empty:"No task is currently in progress." },
-      { key:"recovery", title:"RECOVERY QUEUE", subtitle:"Late tasks are separated so they stop silently destroying the day.", items:recovery, color:C.red, empty:"No late task in this space." },
-      { key:"week", title:"THIS WEEK", subtitle:"Upcoming tasks within seven days.", items:thisWeek, color:C.purple, empty:"No task due this week." },
-      { key:"backlog", title:"BACKLOG / PARKING", subtitle:"Useful tasks without urgent timing. Review when planning.", items:backlog, color:C.muted, empty:"No backlog item." },
+      { key:"next", title:"NEXT MISSION", subtitle:"Auto-sorted by urgent priority, deadline, late risk, and current status.", items:next, color:C.orange, empty:"No open mission. Add a task or sync from cloud." },
+      { key:"routine", title:"ROUTINE ENGINE", subtitle:"Daily discipline tasks due today.", items:routine, color:C.gold, empty:"No routine task due today." },
+      { key:"progress", title:"IN PROGRESS", subtitle:"Tasks already started. Finish these before opening too many new ones.", items:progress, color:C.blue, empty:"No task is currently in progress." },
+      { key:"recovery", title:"RECOVERY QUEUE", subtitle:"Late tasks are separated and sorted by priority.", items:recovery, color:C.red, empty:"No late task in this space." },
+      { key:"week", title:"THIS WEEK", subtitle:"Upcoming work within seven days.", items:thisWeek, color:C.purple, empty:"No task due this week." },
+      { key:"backlog", title:"BACKLOG / PARKING", subtitle:"Useful tasks without urgent timing.", items:backlog, color:C.muted, empty:"No backlog item." },
       { key:"proof", title:"DONE / PROOF", subtitle:"Completed work stays visible as proof of progress.", items:done, color:C.green, empty:"No completed task yet." },
     ];
     if (taskLens === "mission") return allSections;
@@ -4521,7 +4570,7 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
   const expandAll = () => setCollapsedSections({});
 
   const TaskActionButton = ({ children, onClick, orange, danger }) => (
-    <button onClick={onClick} style={{ border:"1px solid "+(danger ? C.red : orange ? C.orange : C.border), background:orange ? C.orange : danger ? C.red+"18" : "transparent", color:orange ? "#fff" : danger ? C.red : C.cream, borderRadius:999, padding:"6px 10px", fontSize:11, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" }}>{children}</button>
+    <button onClick={onClick} style={{ border:"1px solid "+(danger ? C.red : orange ? C.orange : C.border), background:orange ? C.orange : danger ? C.red+"18" : "transparent", color:orange ? "#fff" : danger ? C.red : C.cream, borderRadius:10, padding:"6px 10px", fontSize:11, fontWeight:900, cursor:"pointer", whiteSpace:"nowrap" }}>{children}</button>
   );
 
   const renderTaskCard = (task, sectionKey) => {
@@ -4535,7 +4584,6 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
     const checklistTotal = checklistItems.length;
     const progressPct = done ? 100 : checklistTotal ? Math.round((checklistDone / checklistTotal) * 100) : (t.status === "In Progress" ? 45 : 0);
     const borderColor = done ? C.green : late.isLate ? C.red : sectionKey === "next" ? C.orange : priorityColor(t.priority);
-    const openTask = () => { if (t.isRoutine || String(t.id || "").startsWith("RT-")) setRoutinePopupTask(t); else setSelected(t); };
     const statusLabel = done ? "Done" : late.isLate ? "Late" : t.status;
     const primaryAction = done ? "Reopen" : t.status === "In Progress" ? "Done" : "Start";
     const runPrimaryAction = (e) => {
@@ -4544,63 +4592,30 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
       else if (t.status === "In Progress") markDone(t);
       else startTask(t);
     };
+    const timeDateLine = `${t.time || "No time"} · ${due.date || "No date"} · ${due.label}`;
     return (
-      <div
-        key={t.id}
-        onClick={openTask}
-        style={{
-          background:selected?.id === t.id ? C.elevated : C.bg,
-          border:"1px solid "+(selected?.id === t.id ? C.orange : C.border),
-          borderLeft:"4px solid "+borderColor,
-          borderRadius:14,
-          padding:"10px 12px",
-          cursor:"pointer",
-          opacity:done ? .68 : 1,
-          boxShadow:sectionKey === "next" ? "0 12px 24px rgba(0,0,0,.18)" : "none",
-        }}
-      >
-        <div style={{ display:"grid", gridTemplateColumns:"auto minmax(0,1fr) auto", gap:10, alignItems:"center" }}>
-          <button
-            onClick={(e) => { e.stopPropagation(); done ? reopenTask(t) : markDone(t); }}
-            title={done ? "Reopen task" : "Mark done"}
-            style={{
-              width:28,
-              height:28,
-              borderRadius:"50%",
-              border:"2px solid "+borderColor,
-              background:done ? borderColor : "transparent",
-              color:done ? "#fff" : borderColor,
-              fontWeight:900,
-              cursor:"pointer",
-              flexShrink:0,
-            }}
-          >{done ? "✓" : ""}</button>
-
+      <div key={t.id} onClick={() => setSelected(t)} style={{ background:selected?.id === t.id ? C.elevated : C.bg, border:"1px solid "+(selected?.id === t.id ? C.orange : C.border), borderLeft:"4px solid "+borderColor, borderRadius:14, padding:"12px 13px", cursor:"pointer", opacity:done ? .7 : 1, boxShadow:sectionKey === "next" ? "0 12px 24px rgba(0,0,0,.18)" : "none" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:10, alignItems:"start" }}>
           <div style={{ minWidth:0 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:7, minWidth:0 }}>
-              <div style={{ fontWeight:900, fontSize:14, color:done ? C.muted : late.isLate ? C.red : C.cream, lineHeight:1.35, textDecoration:done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.title}</div>
+            <div style={{ display:"flex", alignItems:"center", gap:7, minWidth:0, flexWrap:"wrap" }}>
               {sectionKey === "next" && <span style={{ color:C.orange, fontSize:10, fontWeight:900, letterSpacing:1 }}>NEXT</span>}
+              <span style={{ color:statusColor(t.status), fontSize:10, fontWeight:900, letterSpacing:1 }}>{statusLabel}</span>
+              <span style={{ color:priorityColor(t.priority), fontSize:10, fontWeight:900, letterSpacing:1 }}>{t.priority}</span>
+              {mopasType && <span style={{ color:mopasType === "Tender Working On" ? C.gold : C.blue, fontSize:10, fontWeight:900, letterSpacing:1 }}>{mopasType}</span>}
+              {t.isRoutine && <span style={{ color:C.gold, fontSize:10, fontWeight:900, letterSpacing:1 }}>ROUTINE</span>}
             </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap", color:C.creamSoft, fontSize:11, marginTop:4 }}>
-              <span>{statusLabel}</span>
-              <span>•</span>
-              <span style={{ color:priorityColor(t.priority) }}>{t.priority}</span>
-              <span>•</span>
-              <span style={{ color:due.color }}>{due.label}{t.time ? ` · ${t.time}` : ""}</span>
-              {mopasType && <><span>•</span><span style={{ color:mopasType === "Tender Working On" ? C.gold : C.blue }}>{mopasType}</span></>}
-              {t.isRoutine && <><span>•</span><span style={{ color:C.gold }}>Routine</span></>}
-            </div>
-            <div style={{ color:C.muted, fontSize:11, marginTop:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{(t.folder || "General") + (t.list ? " / " + t.list : "")}</div>
+            <div style={{ fontWeight:900, fontSize:15, color:done ? C.muted : late.isLate ? C.red : C.cream, lineHeight:1.35, textDecoration:done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", marginTop:5 }}>{t.title}</div>
+            <div style={{ color:due.color, fontSize:12, marginTop:5, fontWeight:800 }}>{timeDateLine}</div>
+            <div style={{ color:C.muted, fontSize:11, marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{(t.folder || "General") + (t.list ? " / " + t.list : "")}</div>
           </div>
-
           <div style={{ display:"flex", gap:6, alignItems:"center", justifyContent:"flex-end", flexWrap:"wrap" }}>
             <TaskActionButton orange={!done && t.status === "In Progress"} onClick={runPrimaryAction}>{primaryAction}</TaskActionButton>
             {!done && late.isLate && <TaskActionButton danger onClick={(e) => { e.stopPropagation(); moveTomorrow(t); }}>Tomorrow</TaskActionButton>}
+            <TaskActionButton onClick={(e) => { e.stopPropagation(); setSelected(t); }}>Details</TaskActionButton>
           </div>
         </div>
-
         {(checklistTotal > 0 || progressPct > 0) && (
-          <div style={{ marginTop:8, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
+          <div style={{ marginTop:9, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
             <div style={{ height:5, background:C.surface, borderRadius:999, overflow:"hidden" }}>
               <div style={{ height:"100%", width:`${Math.max(4, progressPct)}%`, background:done ? C.green : borderColor, borderRadius:999 }} />
             </div>
@@ -4627,55 +4642,53 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
         </div>
         {!collapsed && (
           !section.items.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:18, background:C.bg, border:"1px dashed "+C.border, borderRadius:14 }}>{section.empty}</div> :
-          <div style={{ display:"grid", gap:10 }}>{section.items.map(item => renderTaskCard(item, section.key))}</div>
+          <div style={{ display:"grid", gap:9 }}>{section.items.map(item => renderTaskCard(item, section.key))}</div>
         )}
       </div>
     );
   };
 
   return (
-    <>
     <div style={{ ...PNL, padding:14 }}>
       <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:14, marginBottom:14 }}>
         <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"flex-start", flexWrap:"wrap" }}>
           <div style={{ minWidth:0 }}>
-            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>TASKS</div>
-            <div style={{ color:C.cream, fontSize:20, fontWeight:900, marginTop:3 }}>{currentSpace.name}</div>
-            <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>Clean list view: focus on title, deadline, status, and one next action.</div>
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>TASK WORKDAY VIEW</div>
+            <div style={{ color:C.cream, fontSize:20, fontWeight:900, marginTop:3 }}>{currentSpaceName}</div>
+            <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>Less noise. Auto-sorted by urgent priority, deadline, lateness, and active status.</div>
           </div>
           <div style={{ display:"flex", gap:7, flexWrap:"wrap", justifyContent:"flex-end" }}>
             <Badge color={C.orange}>{metrics.open.length} open</Badge>
+            <Badge color={C.red}>{metrics.urgent.length} urgent</Badge>
             <Badge color={metrics.late.length ? C.red : C.green}>{metrics.late.length} late</Badge>
             <Badge color={C.green}>{metrics.done.length} done</Badge>
           </div>
         </div>
         {metrics.nextMission && (
-          <div style={{ marginTop:12, padding:"9px 11px", borderRadius:12, background:C.surface, border:"1px solid "+C.border, display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", flexWrap:"wrap" }}>
+          <div style={{ marginTop:12, padding:"10px 12px", borderRadius:12, background:C.surface, border:"1px solid "+C.border, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:10, alignItems:"center" }}>
             <div style={{ minWidth:0 }}>
               <span style={{ color:C.orange, fontSize:10, letterSpacing:1.5, fontWeight:900 }}>NEXT MISSION</span>
               <div style={{ color:C.cream, fontWeight:900, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{metrics.nextMission.title}</div>
+              <div style={{ color:C.creamSoft, fontSize:11, marginTop:2 }}>{metrics.nextMission.time || "No time"} · {metrics.nextMission.due || "No date"}</div>
             </div>
-            <Btn small orange onClick={() => { if (metrics.nextMission.isRoutine || String(metrics.nextMission.id || "").startsWith("RT-")) setRoutinePopupTask(metrics.nextMission); else setSelected(metrics.nextMission); }}>Open</Btn>
+            <Btn small orange onClick={() => setSelected(metrics.nextMission)}>Open Details</Btn>
           </div>
         )}
       </div>
 
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
         <div style={{ display:"flex", gap:7, flexWrap:"wrap" }}>
-          {[['mission','Mission'], ['routine','Routine'], ['recovery','Recovery'], ['work','Work'], ['all','All']].map(([key, label]) => <Btn key={key} small orange={taskLens === key} ghost={taskLens !== key} onClick={() => setTaskLens(key)}>{label}</Btn>)}
+          {[["mission","Mission"], ["routine","Routine"], ["recovery","Recovery"], ["work","Work"], ["all","All"]].map(([key, label]) => <Btn key={key} small orange={taskLens === key} ghost={taskLens !== key} onClick={() => setTaskLens(key)}>{label}</Btn>)}
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-          <input value={taskSearch} onChange={e => setTaskSearch(e.target.value)} placeholder="Search tasks..." style={{ width:190, maxWidth:"100%", padding:"8px 11px", borderRadius:999, border:"1px solid "+C.border, background:C.bg, color:C.cream, outline:"none", fontSize:12 }} />
+          <input value={taskSearch} onChange={e => setTaskSearch(e.target.value)} placeholder="Search inside this task list..." style={{ width:230, maxWidth:"100%", padding:"9px 12px", borderRadius:10, border:"1px solid "+C.border, background:C.bg, color:C.cream, outline:"none", fontSize:12 }} />
           <Btn small ghost onClick={collapseAll}>Collapse</Btn>
           <Btn small ghost onClick={expandAll}>Expand</Btn>
-          <Btn small ghost onClick={onClearTasks} style={{ color:C.red, borderColor:C.red }}>Start Fresh Today</Btn>
         </div>
       </div>
 
       {!ordered.length ? <div style={{ color:C.muted, fontSize:13, textAlign:"center", padding:24, background:C.bg, border:"1px dashed "+C.border, borderRadius:14 }}>No task found with the current filters.</div> : <div style={{ display:"grid", gap:12 }}>{filteredSections.map(renderSection)}</div>}
     </div>
-    {routinePopupTask && <RoutineTaskPopup task={routinePopupTask} onClose={() => setRoutinePopupTask(null)} onUpdate={onUpdate} onOpenDetails={(task) => setSelected(task)} />}
-    </>
   );
 }
 
@@ -5040,54 +5053,106 @@ function GoalsView({ activeSpace }) {
   );
 }
 
-function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup, resetSettingsOnly, clearTestData, sendTodayDisciplineEmail, emailNotice }) {
-  const tabs = ["Platform", "Brand & Login", "General", "Daily Routine", "Tasks & Deadlines", "Command Center", "MOPAS Tender", "Documents", "Appearance", "Notifications", "Backup & Data"];
+function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup, resetSettingsOnly, clearTestData, startFreshToday, sendTodayDisciplineEmail, emailNotice }) {
+  const tabs = ["Platform", "Names & Labels", "Brand & Login", "General", "Daily Routine", "Tasks & Deadlines", "Command Center", "MOPAS Tender", "Documents", "Appearance", "Notifications", "Backup & Data"];
   const [tab, setTab] = useState("Platform");
   const [settingsQuery, setSettingsQuery] = useState("");
-  const merged = mergeAppSettings(settings);
-  const update = (section, key, value) => setSettings(prev => mergeAppSettings({ ...prev, [section]:{ ...(prev?.[section] || {}), [key]:value } }));
-  const updateCommandSection = (key, value) => setSettings(prev => {
-    const current = mergeAppSettings(prev || {});
-    return mergeAppSettings({
-      ...current,
-      commandCenter:{
-        ...current.commandCenter,
-        sections:{ ...(current.commandCenter?.sections || {}), [key]:value },
-      },
+  const [draft, setDraft] = useState(() => mergeAppSettings(settings));
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setDraft(mergeAppSettings(settings));
+    setDirty(false);
+  }, [settings]);
+
+  const merged = mergeAppSettings(draft);
+  const update = (section, key, value) => {
+    setDirty(true);
+    setDraft(prev => {
+      const current = mergeAppSettings(prev || {});
+      return mergeAppSettings({ ...current, [section]:{ ...(current?.[section] || {}), [key]:value } });
     });
-  });
-  const moveCommandSection = (key, direction) => setSettings(prev => {
-    const current = mergeAppSettings(prev || {});
-    const order = [...(current.commandCenter?.sectionOrder || DEFAULT_COMMAND_CENTER_ORDER)];
-    const index = order.indexOf(key);
-    const nextIndex = index + direction;
-    if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return current;
-    [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
-    return mergeAppSettings({ ...current, commandCenter:{ ...current.commandCenter, sectionOrder:order } });
-  });
-  const resetCommandCenter = () => setSettings(prev => {
-    const current = mergeAppSettings(prev || {});
-    return mergeAppSettings({ ...current, commandCenter:{ ...DEFAULT_APP_SETTINGS.commandCenter, professionalCalendarPinned:true } });
-  });
-  const updateAllCommandSections = (visible) => setSettings(prev => {
-    const current = mergeAppSettings(prev || {});
-    const sections = DEFAULT_COMMAND_CENTER_ORDER.reduce((acc, key) => ({ ...acc, [key]:visible }), {});
-    sections.miniCalendar = true;
-    return mergeAppSettings({ ...current, commandCenter:{ ...current.commandCenter, sections } });
-  });
-  const applyCommandPreset = (preset) => setSettings(prev => {
-    const current = mergeAppSettings(prev || {});
-    const presets = {
-      focus:["coach", "stats", "miniCalendar", "taskCategories", "todayFocus", "lateTasks"],
-      mopas:["coach", "stats", "miniCalendar", "mopasAlerts", "documentAlerts", "taskCategories", "lateTasks", "todayFocus"],
-      money:["coach", "stats", "miniCalendar", "taskCategories", "goalProgress", "weeklyProgress"],
-      full:DEFAULT_COMMAND_CENTER_ORDER,
-    };
-    const order = presets[preset] || DEFAULT_COMMAND_CENTER_ORDER;
-    const sections = DEFAULT_COMMAND_CENTER_ORDER.reduce((acc, key) => ({ ...acc, [key]:order.includes(key) }), {});
-    sections.miniCalendar = true;
-    return mergeAppSettings({ ...current, commandCenter:{ ...current.commandCenter, sectionOrder:[...order, ...DEFAULT_COMMAND_CENTER_ORDER.filter(k => !order.includes(k))], sections, visibleCount:preset === "full" ? 12 : 8 } });
-  });
+  };
+  const updateNested = (section, group, key, value) => {
+    setDirty(true);
+    setDraft(prev => {
+      const current = mergeAppSettings(prev || {});
+      return mergeAppSettings({
+        ...current,
+        [section]:{
+          ...(current?.[section] || {}),
+          [group]:{ ...((current?.[section] || {})[group] || {}), [key]:value },
+        },
+      });
+    });
+  };
+  const saveSettingsChanges = () => {
+    const clean = mergeAppSettings(draft);
+    setSettings(clean);
+    saveAppSettings(clean);
+    setDirty(false);
+  };
+  const discardSettingsChanges = () => {
+    setDraft(mergeAppSettings(settings));
+    setDirty(false);
+  };
+  const updateCommandSection = (key, value) => {
+    setDirty(true);
+    setDraft(prev => {
+      const current = mergeAppSettings(prev || {});
+      return mergeAppSettings({
+        ...current,
+        commandCenter:{
+          ...current.commandCenter,
+          sections:{ ...(current.commandCenter?.sections || {}), [key]:value },
+        },
+      });
+    });
+  };
+  const moveCommandSection = (key, direction) => {
+    setDirty(true);
+    setDraft(prev => {
+      const current = mergeAppSettings(prev || {});
+      const order = [...(current.commandCenter?.sectionOrder || DEFAULT_COMMAND_CENTER_ORDER)];
+      const index = order.indexOf(key);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= order.length) return current;
+      [order[index], order[nextIndex]] = [order[nextIndex], order[index]];
+      return mergeAppSettings({ ...current, commandCenter:{ ...current.commandCenter, sectionOrder:order } });
+    });
+  };
+  const resetCommandCenter = () => {
+    setDirty(true);
+    setDraft(prev => {
+      const current = mergeAppSettings(prev || {});
+      return mergeAppSettings({ ...current, commandCenter:{ ...DEFAULT_APP_SETTINGS.commandCenter, professionalCalendarPinned:true } });
+    });
+  };
+  const updateAllCommandSections = (visible) => {
+    setDirty(true);
+    setDraft(prev => {
+      const current = mergeAppSettings(prev || {});
+      const sections = DEFAULT_COMMAND_CENTER_ORDER.reduce((acc, key) => ({ ...acc, [key]:visible }), {});
+      sections.miniCalendar = true;
+      return mergeAppSettings({ ...current, commandCenter:{ ...current.commandCenter, sections } });
+    });
+  };
+  const applyCommandPreset = (preset) => {
+    setDirty(true);
+    setDraft(prev => {
+      const current = mergeAppSettings(prev || {});
+      const presets = {
+        focus:["coach", "stats", "miniCalendar", "taskCategories", "todayFocus", "lateTasks"],
+        mopas:["coach", "stats", "miniCalendar", "mopasAlerts", "documentAlerts", "taskCategories", "lateTasks", "todayFocus"],
+        money:["coach", "stats", "miniCalendar", "taskCategories", "goalProgress", "weeklyProgress"],
+        full:DEFAULT_COMMAND_CENTER_ORDER,
+      };
+      const order = presets[preset] || DEFAULT_COMMAND_CENTER_ORDER;
+      const sections = DEFAULT_COMMAND_CENTER_ORDER.reduce((acc, key) => ({ ...acc, [key]:order.includes(key) }), {});
+      sections.miniCalendar = true;
+      return mergeAppSettings({ ...current, commandCenter:{ ...current.commandCenter, sectionOrder:[...order, ...DEFAULT_COMMAND_CENTER_ORDER.filter(k => !order.includes(k))], sections, visibleCount:preset === "full" ? 12 : 8 } });
+    });
+  };
   const storageSize = useMemo(() => {
     try {
       let total = 0;
@@ -5157,6 +5222,7 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
   };
   const settingsSearchText = {
     "Platform":"platform app name workspace default space timezone sync sidebar phone tablet desktop quick actions",
+    "Names & Labels":"rename labels spaces task board calendar goals documents money command center mobile nav",
     "Brand & Login":"brand login title subtitle user name role company logo clean screen",
     "General":"user name role company workspace default space timezone profile identity",
     "Daily Routine":"wake up reading workout drawingbox personal project end day review routine auto tasks",
@@ -5179,9 +5245,9 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
         <div>
           <div style={{ color:C.gold, fontSize:11, letterSpacing:2 }}>SETTINGS</div>
           <h2 style={{ margin:"4px 0", color:C.cream }}>Workspace control center</h2>
-          <div style={{ color:C.creamSoft, fontSize:13 }}>Customize routines, deadlines, documents, backup, appearance, and notifications without editing code.</div>
+          <div style={{ color:C.creamSoft, fontSize:13 }}>Customize routines, names, deadlines, documents, backup, appearance, and notifications. Changes apply after you click Save Changes.</div>
         </div>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}><Badge color={C.orange}>{merged.general.timezone}</Badge><Badge color={C.green}>Auto-saved</Badge><Badge color={C.blue}>{tasks.length} tasks</Badge></div>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}><Badge color={C.orange}>{merged.general.timezone}</Badge><Badge color={dirty ? C.orange : C.green}>{dirty ? "Unsaved changes" : "Saved"}</Badge><Badge color={C.blue}>{tasks.length} tasks</Badge><Btn small orange disabled={!dirty} onClick={saveSettingsChanges}>Save Changes</Btn>{dirty && <Btn small ghost onClick={discardSettingsChanges}>Discard</Btn>}</div>
       </div>
       <div style={{ ...PNL, padding:12, display:"grid", gap:10 }}>
         <input value={settingsQuery} onChange={e => setSettingsQuery(e.target.value)} placeholder="Deep search settings: name, login, reminder, command, document, backup..." style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid "+C.border, background:C.bg, color:C.cream, outline:"none", boxSizing:"border-box" }} />
@@ -5209,6 +5275,27 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
           <Toggle label="Show top settings button" checked={merged.appearance.showTopSettingsButton === true} onChange={v => update("appearance", "showTopSettingsButton", v)} />
           <Toggle label="Show technical login details" checked={merged.appearance.showLoginDetails === true} onChange={v => update("appearance", "showLoginDetails", v)} />
         </div>
+      </SettingCard>}
+
+      {tab === "Names & Labels" && <SettingCard title="NAMES & LABELS" note="Rename the app, sidebar spaces, task views, mobile navigation, and main labels. Click Save Changes when finished.">
+        <FieldGrid>
+          <Input label="APP SHORT NAME" value={merged.general.appShortName || "AFTERGLOW"} onChange={e => update("general", "appShortName", e.target.value)} />
+          <Input label="WORKSPACE NAME" value={merged.general.workspaceName || "AFTERGLOW Workspace"} onChange={e => update("general", "workspaceName", e.target.value)} />
+          <Input label="DASHBOARD / COMMAND NAME" value={merged.names.nav.dashboard || "Command Center"} onChange={e => updateNested("names", "nav", "dashboard", e.target.value)} />
+          <Input label="TASKS NAME" value={merged.names.nav.tasks || "Tasks"} onChange={e => updateNested("names", "nav", "tasks", e.target.value)} />
+          <Input label="BOARD NAME" value={merged.names.nav.board || "Board"} onChange={e => updateNested("names", "nav", "board", e.target.value)} />
+          <Input label="TABLE NAME" value={merged.names.nav.table || "Table"} onChange={e => updateNested("names", "nav", "table", e.target.value)} />
+          <Input label="CALENDAR NAME" value={merged.names.nav.calendar || "Calendar"} onChange={e => updateNested("names", "nav", "calendar", e.target.value)} />
+          <Input label="GOALS NAME" value={merged.names.nav.goals || "Goals"} onChange={e => updateNested("names", "nav", "goals", e.target.value)} />
+          <Input label="DOCUMENTS NAME" value={merged.names.nav.documents || "Documents"} onChange={e => updateNested("names", "nav", "documents", e.target.value)} />
+          <Input label="LIFE OS NAME" value={merged.names.nav.lifeOS || "Life OS Lab"} onChange={e => updateNested("names", "nav", "lifeOS", e.target.value)} />
+          <Input label="MONEY HEALTH NAME" value={merged.names.nav.moneyHealth || "Financial Health"} onChange={e => updateNested("names", "nav", "moneyHealth", e.target.value)} />
+          <Input label="MONEY TASKS NAME" value={merged.names.nav.moneyTasks || "Money Tasks"} onChange={e => updateNested("names", "nav", "moneyTasks", e.target.value)} />
+        </FieldGrid>
+        <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900, margin:"14px 0 8px" }}>SPACE NAMES</div>
+        <FieldGrid>
+          {SPACES.map(space => <Input key={space.id} label={(space.name || space.id).toUpperCase()} value={merged.names.spaces?.[space.id] || space.name} onChange={e => updateNested("names", "spaces", space.id, e.target.value)} />)}
+        </FieldGrid>
       </SettingCard>}
 
       {tab === "Brand & Login" && <SettingCard title="BRAND & LOGIN" note="Make the entry screen cleaner or more personal without touching code.">
@@ -5365,10 +5452,11 @@ function SettingsView({ settings, setSettings, tasks, exportBackup, importBackup
           </label>
           <Btn ghost onClick={resetSettingsOnly}>Reset Settings Only</Btn>
           <Btn ghost onClick={clearTestData} style={{ color:C.red, borderColor:C.red }}>Clear Test Data</Btn>
+          <Btn ghost onClick={startFreshToday} style={{ color:C.red, borderColor:C.red }}>Start Fresh Today</Btn>
         </div>
       </SettingCard>}
 
-      {tab === "Appearance" && <SettingCard title="APPEARANCE" note="Customize the workspace look. These options save immediately and apply live.">
+      {tab === "Appearance" && <SettingCard title="APPEARANCE" note="Customize the workspace look. Edit first, then click Save Changes at the top.">
         <FieldGrid>
           <Select label="THEME" options={["dark", "darker"]} value={merged.appearance.theme} onChange={e => update("appearance", "theme", e.target.value)} />
           <Select label="ACCENT COLOR" options={["orange", "gold", "blue", "green", "purple"]} value={merged.appearance.accentColor} onChange={e => update("appearance", "accentColor", e.target.value)} />
@@ -5903,15 +5991,15 @@ function AuthGate({ backendNotice, backendBusy, onLogin, onRegister, settings })
   };
   const visibleNotice = backendNotice && backendNotice.type === "error" ? backendNotice : null;
   return (
-    <div style={{ minHeight:"100vh", background:`radial-gradient(circle at top left, ${C.orange}22, transparent 35%), ${C.bg}`, color:C.cream, display:"flex", alignItems:"center", justifyContent:"center", padding:20, fontFamily:"Segoe UI, Helvetica Neue, sans-serif" }}>
-      <div style={{ width:"100%", maxWidth:760, display:"grid", gap:18, alignItems:"stretch" }}>
-        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:24, padding:28, boxShadow:"0 26px 90px #0008" }}>
+    <div style={{ minHeight:"100dvh", background:`radial-gradient(circle at top left, ${C.orange}22, transparent 35%), ${C.bg}`, color:C.cream, display:"flex", alignItems:"center", justifyContent:"center", padding:"14px", fontFamily:"Segoe UI, Helvetica Neue, sans-serif", boxSizing:"border-box" }}>
+      <div style={{ width:"100%", maxWidth:460, display:"grid", gap:14, alignItems:"stretch" }}>
+        <div style={{ background:C.surface, border:"1px solid "+C.border, borderRadius:22, padding:"clamp(16px, 5vw, 26px)", boxShadow:"0 26px 90px #0008", boxSizing:"border-box" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:14, flexWrap:"wrap" }}>
             <Logo size="large" />
             <Badge color={C.green}>{merged.general.appShortName || "AFTERGLOW"}</Badge>
           </div>
           <div style={{ color:C.gold, fontSize:11, letterSpacing:2.5, fontWeight:900, marginTop:20 }}>{merged.general.workspaceName || "AFTERGLOW Workspace"}</div>
-          <h1 style={{ margin:"10px 0 8px", fontSize:32, lineHeight:1.08 }}>{merged.general.loginTitle || "Login first. Work from anywhere."}</h1>
+          <h1 style={{ margin:"10px 0 8px", fontSize:"clamp(24px, 8vw, 32px)", lineHeight:1.08 }}>{merged.general.loginTitle || "Login first. Work from anywhere."}</h1>
           <p style={{ color:C.creamSoft, lineHeight:1.6, fontSize:14, margin:"0 0 18px", maxWidth:620 }}>{merged.general.loginSubtitle || "Your daily operating system for tasks, MOPAS operations, documents, money, and discipline."}</p>
           <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:18, padding:16 }}>
             <div style={{ display:"flex", gap:8, marginBottom:16, background:C.elevated, border:"1px solid "+C.border, borderRadius:14, padding:5 }}>
@@ -5943,13 +6031,15 @@ function CloudSyncPanel({ auth, backendNotice, backendBusy, onLogin, onRegister,
   const submitLogin = () => onLogin({ email:form.email.trim(), password:form.password });
   const submitRegister = () => onRegister({ name:form.name.trim() || "Samu", email:form.email.trim(), password:form.password });
   const visibleNotice = backendNotice && backendNotice.type === "error" ? backendNotice : null;
+  const phonePopup = typeof window !== "undefined" && window.innerWidth < 720;
+  const popupPosition = phonePopup ? { position:"fixed", left:12, right:12, top:70, width:"auto", maxWidth:"none" } : { position:"absolute", right:0, ...(placement === "top" ? { bottom:"calc(100% + 8px)" } : { top:"calc(100% + 8px)" }), width:340, maxWidth:"calc(100vw - 24px)" };
   return (
     <div style={{ position:"relative", minWidth: compact ? 0 : undefined }}>
       <Btn ghost small onClick={() => setOpen(v => !v)} style={{ borderColor:isConnected ? C.green : C.border, color:isConnected ? C.green : C.cream, width: compact ? "100%" : undefined, whiteSpace:"nowrap" }}>
         {isConnected ? "Account" : "Sign in"}
       </Btn>
       {open && (
-        <div style={{ position:"absolute", right:0, ...(placement === "top" ? { bottom:"calc(100% + 8px)" } : { top:"calc(100% + 8px)" }), width:340, maxWidth:"calc(100vw - 24px)", background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:14, zIndex:80, boxShadow:"0 20px 60px #0009" }}>
+        <div style={{ ...popupPosition, background:C.surface, border:"1px solid "+C.border, borderRadius:14, padding:14, zIndex:80, boxShadow:"0 20px 60px #0009" }}>
           <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", marginBottom:10 }}>
             <div>
               <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:800 }}>ACCOUNT</div>
@@ -7057,17 +7147,17 @@ This will clear ${total} existing task${total === 1 ? "" : "s"} and create today
   }
 
   const VIEWS = activeSpace === "mopas" ? ["list","board","table","calendar","Goals","documents","daily report","tender folder"] : ["list","board","table","calendar","Goals","documents"];
-  const GLOBAL_VIEWS = ["dashboard", "boards", "database", "automations", "reports", "knowledge", "roadmap", "settings", "life os"];
+  const GLOBAL_VIEWS = ["dashboard", "boards", "reports", "knowledge", "settings", "life os"];
   const isGlobalView = GLOBAL_VIEWS.includes(view);
-  const viewTitle = view === "dashboard" ? "AFTERGLOW Command Center" : view === "boards" ? "Boards" : view === "database" ? "Data Hub" : view === "automations" ? "Automations" : view === "reports" ? "Reports" : view === "knowledge" ? "Knowledge Base" : view === "roadmap" ? "Roadmap" : view === "life os" ? "AFTERGLOW Life OS Lab" : view === "settings" ? "Settings" : sp.name;
+  const viewTitle = view === "dashboard" ? getNavLabel(safeSettings, "dashboard", "AFTERGLOW Command Center") : view === "boards" ? getNavLabel(safeSettings, "board", "Boards") : view === "reports" ? getNavLabel(safeSettings, "reports", "Reports") : view === "knowledge" ? getNavLabel(safeSettings, "knowledge", "Knowledge Base") : view === "life os" ? getNavLabel(safeSettings, "lifeOS", "AFTERGLOW Life OS Lab") : view === "settings" ? getNavLabel(safeSettings, "settings", "Settings") : getSpaceDisplayName(safeSettings, sp);
 
   const mobileNavItems = [
-    { id:"dashboard", label:"Home", icon:"▦", fn:() => { setView("dashboard"); setSelected(null); if (isMobileLayout) setSidebarOpen(false); } },
-    { id:"list",      label:"Tasks", icon:"☰", fn:() => { setView("list"); if (isMobileLayout) setSidebarOpen(false); } },
+    { id:"dashboard", label:getNavLabel(safeSettings, "dashboard", "Home"), icon:"▦", fn:() => { setView("dashboard"); setSelected(null); if (isMobileLayout) setSidebarOpen(false); } },
+    { id:"list",      label:getNavLabel(safeSettings, "tasks", "Tasks"), icon:"☰", fn:() => { setView("list"); if (isMobileLayout) setSidebarOpen(false); } },
     { id:"mopas",     label:"MOPAS", icon:"◈", fn:() => goSpace("mopas") },
     { id:"add",       label:"Add",   icon:"+", fn:() => setShowNewTask(true), accent:true },
-    { id:"money",     label:"Money", icon:"◉", fn:() => goSpace("money") },
-    { id:"reports",   label:"Reports",icon:"▧",fn:() => { setView("reports"); setSelected(null); if (isMobileLayout) setSidebarOpen(false); } },
+    { id:"money",     label:getSpaceDisplayName(safeSettings, "money", "Money"), icon:"◉", fn:() => goSpace("money") },
+    { id:"reports",   label:getNavLabel(safeSettings, "reports", "Reports"),icon:"▧",fn:() => { setView("reports"); setSelected(null); if (isMobileLayout) setSidebarOpen(false); } },
     { id:"_menu",     label:"Menu",  icon:"⋯", fn:() => setSidebarOpen(o => !o) },
   ];
   const mobileActiveId = view === "dashboard" ? "dashboard" : view === "reports" ? "reports" : (!isGlobalView && activeSpace === "mopas") ? "mopas" : (!isGlobalView && activeSpace === "money") ? "money" : view === "list" ? "list" : "";
@@ -7090,10 +7180,10 @@ This will clear ${total} existing task${total === 1 ? "" : "s"} and create today
           {/* Command section */}
           <div style={{ fontSize:9, color:C.muted, letterSpacing:2.5, fontWeight:900, padding:"6px 4px 3px" }}>COMMAND</div>
           {[
-            { id:"dashboard", label:safeSettings.appearance.dashboardLabel || "Command Center", icon:safeSettings.appearance.dashboardIcon || "▦", color:C.orange },
-            { id:"boards",    label:"Boards",       icon:"▥", color:C.blue },
-            { id:"reports",   label:"Reports",      icon:"▧", color:C.green },
-            { id:"knowledge", label:"Knowledge",    icon:"◫", color:C.creamSoft },
+            { id:"dashboard", label:getNavLabel(safeSettings, "dashboard", safeSettings.appearance.dashboardLabel || "Command Center"), icon:safeSettings.appearance.dashboardIcon || "▦", color:C.orange },
+            { id:"boards",    label:getNavLabel(safeSettings, "board", "Boards"),       icon:"▥", color:C.blue },
+            { id:"reports",   label:getNavLabel(safeSettings, "reports", "Reports"),      icon:"▧", color:C.green },
+            { id:"knowledge", label:getNavLabel(safeSettings, "knowledge", "Knowledge"),    icon:"◫", color:C.creamSoft },
           ].map(item => {
             const active = view === item.id;
             return (
@@ -7113,7 +7203,7 @@ This will clear ${total} existing task${total === 1 ? "" : "s"} and create today
             return (
               <div key={s.id} onClick={() => goSpace(s.id)} style={{ padding:"8px 10px", borderRadius:8, cursor:"pointer", marginBottom:1, display:"flex", alignItems:"center", gap:8, background:active ? C.elevated : "transparent", borderLeft:"3px solid "+(active ? s.color : "transparent") }}>
                 <span style={{ fontSize:13, color:active ? s.color : C.muted, width:16, textAlign:"center", flexShrink:0 }}>{s.icon}</span>
-                <span style={{ flex:1, fontSize:12, fontWeight:active ? 700 : 400, color:active ? s.color : C.cream, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{s.name}</span>
+                <span style={{ flex:1, fontSize:12, fontWeight:active ? 700 : 400, color:active ? s.color : C.cream, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{getSpaceDisplayName(safeSettings, s)}</span>
                 <div style={{ display:"flex", gap:3, alignItems:"center", flexShrink:0 }}>
                   {late > 0 && <span style={{ fontSize:9, color:C.red, background:C.red+"22", borderRadius:6, padding:"1px 4px", fontWeight:900 }}>{late}</span>}
                   {safeSettings.appearance.showTaskCounts !== false && <span style={{ fontSize:9, color:C.muted, background:C.bg, borderRadius:6, padding:"1px 5px" }}>{count}</span>}
@@ -7125,10 +7215,7 @@ This will clear ${total} existing task${total === 1 ? "" : "s"} and create today
           {/* Tools section */}
           <div style={{ fontSize:9, color:C.muted, letterSpacing:2.5, fontWeight:900, padding:"10px 4px 3px" }}>TOOLS</div>
           {[
-            { id:"database",   label:"Data Hub",     icon:"▤", color:C.gold },
-            { id:"automations",label:"Automations",  icon:"⚙", color:C.purple },
-            { id:"roadmap",    label:"Roadmap",      icon:"⇢", color:C.gold },
-            { id:"life os",    label:"Life OS Lab",  icon:"◎", color:C.orange },
+            { id:"life os",    label:getNavLabel(safeSettings, "lifeOS", "Life OS Lab"),  icon:"◎", color:C.orange },
           ].map(item => {
             const active = view === item.id;
             return (
@@ -7163,20 +7250,6 @@ This will clear ${total} existing task${total === 1 ? "" : "s"} and create today
             </div>
           </div>
           <div style={{ display:"flex", gap:6, alignItems:"center", flexShrink:0 }}>
-            {!isGlobalView && !isPhoneLayout && (
-              <div style={{ display:"flex", gap:3, background:C.bg, border:"1px solid "+C.border, borderRadius:9, padding:"3px 3px", overflowX:"auto" }}>
-                {VIEWS.map(v => (
-                  <span key={v} onClick={() => setView(v)} style={{ padding:"5px 10px", borderRadius:6, cursor:"pointer", fontSize:11, fontWeight:view === v ? 800 : 500, background:view === v ? C.elevated : "transparent", color:view === v ? C.orange : C.creamSoft, whiteSpace:"nowrap", flexShrink:0 }}>
-                    {v.split(" ").map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(" ")}
-                  </span>
-                ))}
-              </div>
-            )}
-            {isPhoneLayout && !isGlobalView && (
-              <select value={view} onChange={e => setView(e.target.value)} style={{ padding:"5px 7px", borderRadius:7, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:11 }}>
-                {VIEWS.map(v => <option key={v} value={v}>{v.split(" ").map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(" ")}</option>)}
-              </select>
-            )}
             {safeSettings.appearance.showTopQuickActions === true && !isPhoneLayout && <Btn ghost onClick={() => sendTodayDisciplineEmail({ manual:true })}>Email</Btn>}
             {safeSettings.appearance.showTopQuickActions === true && !isPhoneLayout && <Btn ghost onClick={exportBackup}>Backup</Btn>}
             {safeSettings.appearance.showTopQuickActions === true && !isPhoneLayout && (
@@ -7205,6 +7278,13 @@ This will clear ${total} existing task${total === 1 ? "" : "s"} and create today
             <select value={deadlineFilter} onChange={e => setDeadlineFilter(e.target.value)} style={{ padding:"7px 8px", borderRadius:8, border:"1px solid "+C.border, background:C.bg, color:C.cream, fontSize:12 }}>
               {["All","Overdue","Today","Tomorrow","This week","No deadline"].map(x => <option key={x} value={x}>{x}</option>)}
             </select>
+            <div style={{ flex:"1 1 100%", display:"flex", gap:5, background:C.bg, border:"1px solid "+C.border, borderRadius:10, padding:"4px", overflowX:"auto", marginTop:2 }}>
+              {VIEWS.map(v => (
+                <span key={v} onClick={() => setView(v)} style={{ padding:isPhoneLayout ? "7px 10px" : "6px 11px", borderRadius:8, cursor:"pointer", fontSize:11, fontWeight:view === v ? 900 : 600, background:view === v ? C.elevated : "transparent", color:view === v ? C.orange : C.creamSoft, whiteSpace:"nowrap", flexShrink:0 }}>
+                  {getViewDisplayLabel(safeSettings, v)}
+                </span>
+              ))}
+            </div>
           </div>
         )}
 
@@ -7227,11 +7307,11 @@ This will clear ${total} existing task${total === 1 ? "" : "s"} and create today
           ) : view === "life os" ? (
             <LifeOSFutureView tasks={tasks} settings={safeSettings} setActiveSpace={setActiveSpace} setView={setView} setSelected={setSelected} setShowNewTask={setShowNewTask} onUpdate={updateTask} isPhoneLayout={isPhoneLayout} />
           ) : view === "settings" ? (
-            <SettingsView settings={safeSettings} setSettings={setSettings} tasks={tasks} exportBackup={exportBackup} importBackup={importBackup} resetSettingsOnly={resetSettingsOnly} clearTestData={clearTestData} sendTodayDisciplineEmail={sendTodayDisciplineEmail} emailNotice={emailNotice} />
+            <SettingsView settings={safeSettings} setSettings={setSettings} tasks={tasks} exportBackup={exportBackup} importBackup={importBackup} resetSettingsOnly={resetSettingsOnly} clearTestData={clearTestData} startFreshToday={startFreshToday} sendTodayDisciplineEmail={sendTodayDisciplineEmail} emailNotice={emailNotice} />
           ) : (
             <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:18, alignItems:"start", minWidth:0, maxWidth:"100%" }}>
               <div style={{ minWidth:0, overflow:"hidden" }}>
-                {view === "list" && (activeSpace === "money" ? <><MoneySpaceFinancialHealth tasks={tasks} onUpdate={updateTask} /><ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} onClearTasks={startFreshToday} /></> : <ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} onClearTasks={startFreshToday} />)}
+                {view === "list" && (activeSpace === "money" ? <><MoneySpaceFinancialHealth tasks={tasks} onUpdate={updateTask} /><div style={{ ...PNL, borderLeft:"5px solid "+C.blue, marginTop:16, marginBottom:16 }}><div style={{ color:C.blue, fontSize:11, letterSpacing:2, fontWeight:900 }}>{getNavLabel(safeSettings, "moneyTasks", "MONEY TASKS")}</div><div style={{ color:C.creamSoft, fontSize:12, marginTop:4 }}>Tasks are separated from Financial Health so money calculations stay clean.</div></div><ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} /></> : <ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} />)}
                 {view === "board" && <BoardView tasks={filtered} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} />}
                 {view === "table" && <TableView tasks={filtered} selected={selected} setSelected={setSelected} setActiveSpace={setActiveSpace} setView={setView} />}
                 {view === "calendar" && <CalendarView tasks={filtered} />}
