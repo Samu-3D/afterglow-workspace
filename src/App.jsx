@@ -6654,10 +6654,7 @@ function AfterglowApp() {
   const [view, setView] = useState("dashboard");
   const [selected, setSelected] = useState(null);
   const [query, setQuery] = useState("");
-  const [spaceFilter, setSpaceFilter] = useState(() => {
-    const savedScope = readStore(TASK_SCOPE_FILTER_KEY, "all");
-    return savedScope === "active" ? "active" : "all";
-  });
+  const [spaceFilter, setSpaceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("All");
   const [priorityFilter, setPriorityFilter] = useState("All");
   const [deadlineFilter, setDeadlineFilter] = useState("All");
