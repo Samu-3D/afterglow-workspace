@@ -4408,7 +4408,7 @@ function RoutineTaskPopup({ task, onClose, onUpdate, onOpenDetails }) {
   );
 }
 
-function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, settings }) {
+function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, settings, onClearTasks }) {
   const safeTasks = Array.isArray(tasks) ? tasks.map(normalizeTask) : [];
   const [collapsedSections, setCollapsedSections] = useState(() => readStore(TASK_CATEGORY_COLLAPSE_KEY, {}));
   const [taskSearch, setTaskSearch] = useState("");
@@ -4529,49 +4529,84 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
     const done = t.status === "Done";
     const late = taskLateInfo(t);
     const due = dueInfo(t);
-    const score = scoreTask(t);
     const mopasType = t.space === "mopas" ? getMopasTaskType(t) : "";
     const checklistItems = Array.isArray(t.checklist) ? t.checklist : [];
     const checklistDone = checklistItems.filter(item => item && typeof item === "object" && item.done === true).length;
     const checklistTotal = checklistItems.length;
     const progressPct = done ? 100 : checklistTotal ? Math.round((checklistDone / checklistTotal) * 100) : (t.status === "In Progress" ? 45 : 0);
     const borderColor = done ? C.green : late.isLate ? C.red : sectionKey === "next" ? C.orange : priorityColor(t.priority);
+    const openTask = () => { if (t.isRoutine || String(t.id || "").startsWith("RT-")) setRoutinePopupTask(t); else setSelected(t); };
+    const statusLabel = done ? "Done" : late.isLate ? "Late" : t.status;
+    const primaryAction = done ? "Reopen" : t.status === "In Progress" ? "Done" : "Start";
+    const runPrimaryAction = (e) => {
+      e.stopPropagation();
+      if (done) reopenTask(t);
+      else if (t.status === "In Progress") markDone(t);
+      else startTask(t);
+    };
     return (
-      <div key={t.id} onClick={() => { if (t.isRoutine || String(t.id || "").startsWith("RT-")) setRoutinePopupTask(t); else setSelected(t); }} style={{ background:selected?.id === t.id ? C.elevated : C.bg, border:"1px solid "+(selected?.id === t.id ? C.orange : C.border), borderLeft:"5px solid "+borderColor, borderRadius:16, padding:13, cursor:"pointer", boxShadow:sectionKey === "next" ? "0 14px 28px rgba(0,0,0,.22)" : "none", opacity:done ? .72 : 1 }}>
-        <div style={{ display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:12, alignItems:"start" }}>
+      <div
+        key={t.id}
+        onClick={openTask}
+        style={{
+          background:selected?.id === t.id ? C.elevated : C.bg,
+          border:"1px solid "+(selected?.id === t.id ? C.orange : C.border),
+          borderLeft:"4px solid "+borderColor,
+          borderRadius:14,
+          padding:"10px 12px",
+          cursor:"pointer",
+          opacity:done ? .68 : 1,
+          boxShadow:sectionKey === "next" ? "0 12px 24px rgba(0,0,0,.18)" : "none",
+        }}
+      >
+        <div style={{ display:"grid", gridTemplateColumns:"auto minmax(0,1fr) auto", gap:10, alignItems:"center" }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); done ? reopenTask(t) : markDone(t); }}
+            title={done ? "Reopen task" : "Mark done"}
+            style={{
+              width:28,
+              height:28,
+              borderRadius:"50%",
+              border:"2px solid "+borderColor,
+              background:done ? borderColor : "transparent",
+              color:done ? "#fff" : borderColor,
+              fontWeight:900,
+              cursor:"pointer",
+              flexShrink:0,
+            }}
+          >{done ? "✓" : ""}</button>
+
           <div style={{ minWidth:0 }}>
-            <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", marginBottom:7 }}>
-              <Badge color={borderColor}>{sectionKey === "next" ? "NEXT" : done ? "PROOF" : late.isLate ? "RECOVER" : t.status}</Badge>
-              <Badge color={priorityColor(t.priority)}>{t.priority}</Badge>
-              <Badge color={due.color}>{due.label}</Badge>
-              {mopasType && <Badge color={mopasType === "Tender Working On" ? C.gold : C.blue}>{mopasType}</Badge>}
-              {t.isRoutine && <Badge color={C.gold}>Routine</Badge>}
+            <div style={{ display:"flex", alignItems:"center", gap:7, minWidth:0 }}>
+              <div style={{ fontWeight:900, fontSize:14, color:done ? C.muted : late.isLate ? C.red : C.cream, lineHeight:1.35, textDecoration:done ? "line-through" : "none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.title}</div>
+              {sectionKey === "next" && <span style={{ color:C.orange, fontSize:10, fontWeight:900, letterSpacing:1 }}>NEXT</span>}
             </div>
-            <div style={{ fontWeight:900, fontSize:15, color:done ? C.muted : late.isLate ? C.red : C.cream, lineHeight:1.35, textDecoration:done ? "line-through" : "none" }}>{t.title}</div>
-            <div style={{ color:C.creamSoft, fontSize:12, marginTop:5, lineHeight:1.35 }}>{(t.folder || "General") + " / " + (t.list || "Tasks")}{t.time ? " · " + t.time : ""}</div>
-            {(t.goal || t.details) && <div style={{ color:C.muted, fontSize:12, marginTop:7, lineHeight:1.45, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{t.goal || t.details}</div>}
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", color:C.creamSoft, fontSize:11, marginTop:4 }}>
+              <span>{statusLabel}</span>
+              <span>•</span>
+              <span style={{ color:priorityColor(t.priority) }}>{t.priority}</span>
+              <span>•</span>
+              <span style={{ color:due.color }}>{due.label}{t.time ? ` · ${t.time}` : ""}</span>
+              {mopasType && <><span>•</span><span style={{ color:mopasType === "Tender Working On" ? C.gold : C.blue }}>{mopasType}</span></>}
+              {t.isRoutine && <><span>•</span><span style={{ color:C.gold }}>Routine</span></>}
+            </div>
+            <div style={{ color:C.muted, fontSize:11, marginTop:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{(t.folder || "General") + (t.list ? " / " + t.list : "")}</div>
           </div>
-          <div style={{ width:58, height:58, borderRadius:"50%", border:"3px solid "+borderColor, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:900, color:borderColor, background:borderColor+"12", flexShrink:0 }}>
-            {score}
-          </div>
-        </div>
-        <div style={{ marginTop:11, height:7, background:C.surface, borderRadius:999, overflow:"hidden", border:"1px solid "+C.border }}>
-          <div style={{ height:"100%", width:`${Math.max(4, progressPct)}%`, background:done ? C.green : borderColor, borderRadius:999 }} />
-        </div>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap", marginTop:10 }}>
-          <div style={{ color:C.muted, fontSize:11 }}>{checklistTotal ? `${checklistDone}/${checklistTotal} checklist` : `Task ID: ${t.id}`}</div>
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-            {done ? (
-              <TaskActionButton orange onClick={(e) => { e.stopPropagation(); reopenTask(t); }}>Reopen</TaskActionButton>
-            ) : (
-              <>
-                {t.status !== "In Progress" && <TaskActionButton onClick={(e) => { e.stopPropagation(); startTask(t); }}>Start</TaskActionButton>}
-                <TaskActionButton orange onClick={(e) => { e.stopPropagation(); markDone(t); }}>Done</TaskActionButton>
-                {late.isLate && <TaskActionButton danger onClick={(e) => { e.stopPropagation(); moveTomorrow(t); }}>Move tomorrow</TaskActionButton>}
-              </>
-            )}
+
+          <div style={{ display:"flex", gap:6, alignItems:"center", justifyContent:"flex-end", flexWrap:"wrap" }}>
+            <TaskActionButton orange={!done && t.status === "In Progress"} onClick={runPrimaryAction}>{primaryAction}</TaskActionButton>
+            {!done && late.isLate && <TaskActionButton danger onClick={(e) => { e.stopPropagation(); moveTomorrow(t); }}>Tomorrow</TaskActionButton>}
           </div>
         </div>
+
+        {(checklistTotal > 0 || progressPct > 0) && (
+          <div style={{ marginTop:8, display:"grid", gridTemplateColumns:"minmax(0,1fr) auto", gap:8, alignItems:"center" }}>
+            <div style={{ height:5, background:C.surface, borderRadius:999, overflow:"hidden" }}>
+              <div style={{ height:"100%", width:`${Math.max(4, progressPct)}%`, background:done ? C.green : borderColor, borderRadius:999 }} />
+            </div>
+            <div style={{ color:C.muted, fontSize:10 }}>{checklistTotal ? `${checklistDone}/${checklistTotal}` : `${progressPct}%`}</div>
+          </div>
+        )}
       </div>
     );
   };
@@ -4601,16 +4636,28 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
   return (
     <>
     <div style={{ ...PNL, padding:14 }}>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))", gap:10, marginBottom:14 }}>
-        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}>
-          <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>TASK COMMAND QUEUE</div>
-          <div style={{ color:C.cream, fontSize:18, fontWeight:900, marginTop:4 }}>{currentSpace.name}</div>
-          <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>Formula: urgency + deadline + routine + status + MOPAS impact.</div>
+      <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:14, marginBottom:14 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"flex-start", flexWrap:"wrap" }}>
+          <div style={{ minWidth:0 }}>
+            <div style={{ color:C.gold, fontSize:11, letterSpacing:2, fontWeight:900 }}>TASKS</div>
+            <div style={{ color:C.cream, fontSize:20, fontWeight:900, marginTop:3 }}>{currentSpace.name}</div>
+            <div style={{ color:C.muted, fontSize:12, marginTop:4 }}>Clean list view: focus on title, deadline, status, and one next action.</div>
+          </div>
+          <div style={{ display:"flex", gap:7, flexWrap:"wrap", justifyContent:"flex-end" }}>
+            <Badge color={C.orange}>{metrics.open.length} open</Badge>
+            <Badge color={metrics.late.length ? C.red : C.green}>{metrics.late.length} late</Badge>
+            <Badge color={C.green}>{metrics.done.length} done</Badge>
+          </div>
         </div>
-        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}><div style={{ color:C.muted, fontSize:11 }}>NEXT MISSION</div><div style={{ color:C.orange, fontSize:18, fontWeight:900, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{metrics.nextMission?.title || "No mission"}</div></div>
-        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}><div style={{ color:C.muted, fontSize:11 }}>TODAY / ROUTINE</div><div style={{ color:C.gold, fontSize:18, fontWeight:900 }}>{metrics.today.length}</div></div>
-        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}><div style={{ color:C.muted, fontSize:11 }}>RECOVERY</div><div style={{ color:metrics.late.length ? C.red : C.green, fontSize:18, fontWeight:900 }}>{metrics.late.length}</div></div>
-        <div style={{ background:C.bg, border:"1px solid "+C.border, borderRadius:16, padding:13 }}><div style={{ color:C.muted, fontSize:11 }}>PROOF DONE</div><div style={{ color:C.green, fontSize:18, fontWeight:900 }}>{metrics.done.length} · {metrics.donePct}%</div></div>
+        {metrics.nextMission && (
+          <div style={{ marginTop:12, padding:"9px 11px", borderRadius:12, background:C.surface, border:"1px solid "+C.border, display:"flex", justifyContent:"space-between", gap:10, alignItems:"center", flexWrap:"wrap" }}>
+            <div style={{ minWidth:0 }}>
+              <span style={{ color:C.orange, fontSize:10, letterSpacing:1.5, fontWeight:900 }}>NEXT MISSION</span>
+              <div style={{ color:C.cream, fontWeight:900, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{metrics.nextMission.title}</div>
+            </div>
+            <Btn small orange onClick={() => { if (metrics.nextMission.isRoutine || String(metrics.nextMission.id || "").startsWith("RT-")) setRoutinePopupTask(metrics.nextMission); else setSelected(metrics.nextMission); }}>Open</Btn>
+          </div>
+        )}
       </div>
 
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
@@ -4621,6 +4668,7 @@ function ListView({ tasks = [], activeSpace, selected, setSelected, onUpdate, se
           <input value={taskSearch} onChange={e => setTaskSearch(e.target.value)} placeholder="Search tasks..." style={{ width:190, maxWidth:"100%", padding:"8px 11px", borderRadius:999, border:"1px solid "+C.border, background:C.bg, color:C.cream, outline:"none", fontSize:12 }} />
           <Btn small ghost onClick={collapseAll}>Collapse</Btn>
           <Btn small ghost onClick={expandAll}>Expand</Btn>
+          <Btn small ghost onClick={onClearTasks} style={{ color:C.red, borderColor:C.red }}>Start Fresh Today</Btn>
         </div>
       </div>
 
@@ -6854,6 +6902,68 @@ ${target.title || "Untitled task"}`);
       setBackendNotice({ type:"error", message:`Task deleted locally, but cloud delete failed: ${String(error?.message || error)}` });
     }
   }, [tasks]);
+
+  const startFreshToday = useCallback(async () => {
+    const total = Array.isArray(tasks) ? tasks.length : 0;
+    const todayKey = localTodayISO();
+    const freshTasks = ensureRoutineTasksForDate([], todayKey).map(normalizeTask);
+
+    if (!window.confirm(`Start fresh today?
+
+This will clear ${total} existing task${total === 1 ? "" : "s"} and create today's routine tasks.`)) return;
+    if (!window.confirm("Final confirmation: this clears tasks from this app. If cloud is connected, it will also remove the old tasks from Supabase.")) return;
+
+    try {
+      const backup = buildAppBackup(tasks);
+      downloadTextFile(`AFTERGLOW-before-clear-${todayKey}.json`, JSON.stringify(backup, null, 2));
+    } catch {}
+
+    const cloudIds = [...new Set((Array.isArray(tasks) ? tasks : []).map(getTaskCloudId).filter(Boolean))];
+
+    setBackendBusy(true);
+    setSelected(null);
+    setView("list");
+    setActiveSpace(settings?.general?.defaultSpace || "wakeup");
+    setTasks(sortTasksSmart(freshTasks));
+
+    const token = getStoredAuthToken();
+    if (!token) {
+      setBackendBusy(false);
+      setBackendNotice({ type:"success", message:`Fresh start created locally with ${freshTasks.length} routine task${freshTasks.length === 1 ? "" : "s"} for today.` });
+      return;
+    }
+
+    let deleted = 0;
+    let failedDelete = 0;
+    let uploaded = [];
+    try {
+      for (const id of cloudIds) {
+        try {
+          await afterglowApiRequest(`/api/tasks/${id}`, { method:"DELETE" });
+          deleted += 1;
+        } catch {
+          failedDelete += 1;
+        }
+      }
+
+      for (const task of freshTasks) {
+        try {
+          const result = await afterglowApiRequest("/api/tasks", { method:"POST", body:JSON.stringify(taskPayloadForApi(task)) });
+          if (result.data) uploaded.push(taskFromApi(result.data));
+        } catch {}
+      }
+
+      if (uploaded.length) setTasks(mergeCloudTasks(freshTasks, uploaded));
+      setBackendNotice({
+        type: failedDelete ? "error" : "success",
+        message: failedDelete
+          ? `Fresh start created. Deleted ${deleted} cloud task${deleted === 1 ? "" : "s"}; ${failedDelete} cloud delete failed.`
+          : `Fresh start ready. Deleted ${deleted} old cloud task${deleted === 1 ? "" : "s"} and created ${uploaded.length || freshTasks.length} routine task${(uploaded.length || freshTasks.length) === 1 ? "" : "s"} for today.`,
+      });
+    } finally {
+      setBackendBusy(false);
+    }
+  }, [tasks, settings?.general?.defaultSpace]);
   const goSpace = (id) => {
     const safeId = SPACES.some(space => space.id === id) ? id : "wakeup";
     if (isMobileLayout) setSidebarOpen(false);
@@ -7121,7 +7231,7 @@ ${target.title || "Untitled task"}`);
           ) : (
             <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:18, alignItems:"start", minWidth:0, maxWidth:"100%" }}>
               <div style={{ minWidth:0, overflow:"hidden" }}>
-                {view === "list" && (activeSpace === "money" ? <><MoneySpaceFinancialHealth tasks={tasks} onUpdate={updateTask} /><ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} /></> : <ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} />)}
+                {view === "list" && (activeSpace === "money" ? <><MoneySpaceFinancialHealth tasks={tasks} onUpdate={updateTask} /><ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} onClearTasks={startFreshToday} /></> : <ListView tasks={filtered} activeSpace={activeSpace} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} onClearTasks={startFreshToday} />)}
                 {view === "board" && <BoardView tasks={filtered} selected={selected} setSelected={setSelected} onUpdate={updateTask} settings={safeSettings} />}
                 {view === "table" && <TableView tasks={filtered} selected={selected} setSelected={setSelected} setActiveSpace={setActiveSpace} setView={setView} />}
                 {view === "calendar" && <CalendarView tasks={filtered} />}
