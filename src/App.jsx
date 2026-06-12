@@ -1,4 +1,60 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+
+
+// AFTERGLOW hard recovery guard: prevents a pure white screen if cached code or bad saved data throws before React can show its normal recovery panel.
+const installAfterglowHardRecoveryGuard = () => {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  if (window.__AFTERGLOW_HARD_RECOVERY__) return;
+  window.__AFTERGLOW_HARD_RECOVERY__ = true;
+  const showRecovery = (message) => {
+    try {
+      const root = document.getElementById("root") || document.body;
+      if (!root) return;
+      const safeMessage = String(message || "Unknown screen error").replace(/[<>&\"]/g, (ch) => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", "\"":"&quot;"}[ch]));
+      root.innerHTML = `
+        <div style="min-height:100vh;background:#1a1a1a;color:#f5f0e8;display:flex;align-items:center;justify-content:center;padding:24px;font-family:Segoe UI,Arial,sans-serif;box-sizing:border-box;">
+          <div style="max-width:620px;width:100%;background:#232323;border:1px solid #3a3a3a;border-radius:18px;padding:24px;box-shadow:0 24px 70px rgba(0,0,0,.55);">
+            <div style="color:#d4a853;font-size:12px;letter-spacing:2px;font-weight:900;">AFTERGLOW RECOVERY</div>
+            <h2 style="margin:8px 0 8px;color:#f5f0e8;font-size:24px;">The app stopped before the screen loaded.</h2>
+            <p style="color:#b8b0a0;line-height:1.6;margin:0;">This is usually caused by old cached PWA files or a bad saved setting. Your cloud data is safe.</p>
+            <div style="background:#1a1a1a;border:1px solid #3a3a3a;border-radius:10px;padding:12px;color:#e05555;font-size:12px;margin:14px 0;word-break:break-word;">${safeMessage}</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <button id="ag-reload" style="padding:10px 16px;border-radius:10px;border:none;background:#e8732a;color:#fff;font-weight:900;cursor:pointer;">Reload</button>
+              <button id="ag-reset-settings" style="padding:10px 16px;border-radius:10px;border:1px solid #3a3a3a;background:transparent;color:#f5f0e8;font-weight:900;cursor:pointer;">Reset settings only</button>
+              <button id="ag-clear-cache" style="padding:10px 16px;border-radius:10px;border:1px solid #3a3a3a;background:transparent;color:#f5f0e8;font-weight:900;cursor:pointer;">Clear app cache</button>
+            </div>
+          </div>
+        </div>`;
+      document.getElementById("ag-reload")?.addEventListener("click", () => window.location.reload());
+      document.getElementById("ag-reset-settings")?.addEventListener("click", () => {
+        try { window.localStorage.removeItem("afterglow_app_settings_v1"); } catch {}
+        window.location.reload();
+      });
+      document.getElementById("ag-clear-cache")?.addEventListener("click", async () => {
+        try {
+          if ("serviceWorker" in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister()));
+          }
+          if (window.caches) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((key) => caches.delete(key)));
+          }
+          window.localStorage.removeItem("afterglow_app_settings_v1");
+        } catch {}
+        window.location.reload();
+      });
+    } catch {}
+  };
+  window.addEventListener("error", (event) => {
+    window.setTimeout(() => showRecovery(event?.message || event?.error?.message || "JavaScript screen error"), 0);
+  });
+  window.addEventListener("unhandledrejection", (event) => {
+    window.setTimeout(() => showRecovery(event?.reason?.message || event?.reason || "Unhandled app promise error"), 0);
+  });
+};
+installAfterglowHardRecoveryGuard();
+
 const LOGO_SRC = "/Logo_AFTERGLOW1-05.png";
 const C = {
   bg: "#1a1a1a", surface: "#232323", elevated: "#2c2c2c", border: "#3a3a3a",
@@ -2472,13 +2528,17 @@ const applyAppearanceSettings = (settings) => {
   } catch (error) {
     console.warn("AFTERGLOW appearance settings fallback", error);
   }
-  SPACES.forEach(space => {
-    if (space.id === "wakeup" || space.id === "money") space.color = C.gold;
-    if (space.id === "mopas") space.color = C.blue;
-    if (space.id === "health") space.color = C.green;
-    if (space.id === "drawing") space.color = C.purple;
-    if (space.id === "afterglow") space.color = C.orange;
-  });
+  try {
+    SPACES.forEach(space => {
+      if (space.id === "wakeup" || space.id === "money") space.color = C.gold;
+      if (space.id === "mopas") space.color = C.blue;
+      if (space.id === "health") space.color = C.green;
+      if (space.id === "drawing") space.color = C.purple;
+      if (space.id === "afterglow") space.color = C.orange;
+    });
+  } catch (error) {
+    console.warn("AFTERGLOW space color fallback", error);
+  }
 };
 
 const emptyForm = { title:"", folder:"", list:"", status:"To Do", priority:"Normal", due:"", time:"", goal:"", details:"", checklist:"" };
