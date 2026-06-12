@@ -2437,10 +2437,10 @@ const Logo = ({ size = "medium" }) => (
 );
 
 const PNL = {
-  get background() { return C.surface; },
-  get borderRadius() { return C.radius || 12; },
-  get padding() { return C.panelPadding || 20; },
-  get border() { return "1px solid " + C.border; },
+  background: C.surface,
+  borderRadius: 12,
+  padding: 20,
+  border: "1px solid " + C.border,
 };
 
 const THEME_PRESETS = {
@@ -2457,11 +2457,21 @@ const applyAppearanceSettings = (settings) => {
   const accent = ACCENT_PRESETS[appearance.accentColor] || ACCENT_PRESETS.orange;
   const radius = appearance.borderRadius === "soft" ? 8 : appearance.borderRadius === "extra rounded" ? 18 : 12;
   const padding = appearance.panelSpacing === "tight" || appearance.cardDensity === "compact" || appearance.compactMode ? 14 : appearance.panelSpacing === "wide" ? 24 : 20;
-  Object.assign(C, {
-    bg:theme.bg, surface:theme.surface, elevated:theme.elevated, border:theme.border,
-    text:theme.text, muted:theme.muted, cream:theme.cream, creamSoft:theme.creamSoft, orange:accent,
-    radius, panelPadding:padding,
-  });
+  try {
+    Object.assign(C, {
+      bg:theme.bg, surface:theme.surface, elevated:theme.elevated, border:theme.border,
+      text:theme.text, muted:theme.muted, cream:theme.cream, creamSoft:theme.creamSoft, orange:accent,
+      radius, panelPadding:padding,
+    });
+    Object.assign(PNL, {
+      background: C.surface,
+      borderRadius: radius,
+      padding,
+      border: "1px solid " + C.border,
+    });
+  } catch (error) {
+    console.warn("AFTERGLOW appearance settings fallback", error);
+  }
   SPACES.forEach(space => {
     if (space.id === "wakeup" || space.id === "money") space.color = C.gold;
     if (space.id === "mopas") space.color = C.blue;
@@ -6591,7 +6601,7 @@ function AfterglowApp() {
   const isPhoneLayout = screenWidth <= 430;
   const isMobileLayout = screenWidth < 768;
   const safeSettings = useMemo(() => mergeAppSettings(settings || {}), [settings]);
-  applyAppearanceSettings(safeSettings);
+  try { applyAppearanceSettings(safeSettings); } catch (error) { console.warn("AFTERGLOW appearance recovery", error); }
 
   useEffect(() => { save(tasks.map(normalizeTask)); }, [tasks]);
   useEffect(() => { saveAppSettings(settings); }, [settings]);
